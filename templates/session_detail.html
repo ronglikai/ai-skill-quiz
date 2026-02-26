@@ -25,63 +25,85 @@
         </div>
     </div>
 
+    <!-- 综合分析摘要 -->
+    {% if comprehensive %}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+        <div class="flex items-center gap-3 mb-3">
+            <span class="text-lg font-bold text-gray-800">综合分析</span>
+            <span class="text-xs px-2 py-0.5 rounded-full font-medium
+                {% if comprehensive.level == '精通' %}bg-green-100 text-green-700
+                {% elif comprehensive.level == '良好' %}bg-blue-100 text-blue-700
+                {% elif comprehensive.level == '基础' %}bg-yellow-100 text-yellow-700
+                {% else %}bg-red-100 text-red-700{% endif %}">
+                {{ comprehensive.level }} · {{ comprehensive.overall_score }}分
+            </span>
+        </div>
+        <p class="text-sm text-gray-600 leading-relaxed">{{ comprehensive.summary }}</p>
+    </div>
+    {% endif %}
+
     <!-- 答题详情 -->
     <div class="space-y-4">
-        {% set ns = namespace(current_qid=0) %}
         {% for ans in answers %}
-        {% if ans.question_id != ns.current_qid %}
-        {% set ns.current_qid = ans.question_id %}
-        <!-- 题目卡片 -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="px-6 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
                 <div class="flex items-center gap-3">
                     <span class="text-sm font-bold text-gray-600">#{{ ans.question_id }}</span>
                     <span class="text-xs bg-primary-50 text-primary px-2 py-0.5 rounded-full">{{ ans.category }}</span>
                 </div>
-                {% if ans.is_correct %}
-                <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">已掌握</span>
-                {% else %}
-                <span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">需加强</span>
-                {% endif %}
+                <div class="flex items-center gap-2">
+                    {% if ans.score is not none and ans.score >= 0 %}
+                    <span class="text-xs font-medium {% if ans.score >= 60 %}text-green-600{% elif ans.score >= 40 %}text-yellow-600{% else %}text-red-500{% endif %}">
+                        {{ ans.score }}分
+                    </span>
+                    {% endif %}
+                    {% if ans.is_correct %}
+                    <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">已掌握</span>
+                    {% else %}
+                    <span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">需加强</span>
+                    {% endif %}
+                </div>
             </div>
             <div class="p-6">
                 <h3 class="text-base font-bold text-gray-800 mb-4">{{ ans.question_text }}</h3>
-        {% endif %}
 
-                <!-- 单次回答 -->
-                <div class="mb-4 last:mb-0 pl-4 border-l-2 {% if ans.is_correct %}border-green-300{% else %}border-gray-200{% endif %}">
-                    <div class="flex items-center gap-2 mb-2">
-                        <span class="text-xs text-gray-400">第{{ ans.attempt_number }}次回答</span>
-                        <span class="text-xs font-medium {% if ans.score >= 60 %}text-green-600{% elif ans.score >= 40 %}text-yellow-600{% else %}text-red-500{% endif %}">
-                            {{ ans.score }}分
-                        </span>
-                        <span class="text-xs text-gray-400">{{ ans.created_at }}</span>
-                    </div>
+                <!-- 用户回答 -->
+                <div class="mb-4 pl-4 border-l-2 {% if ans.is_correct %}border-green-300{% else %}border-gray-200{% endif %}">
+                    <div class="text-xs text-gray-400 mb-2">{{ ans.created_at }}</div>
                     <div class="bg-gray-50 rounded-lg p-3 mb-2">
-                        <p class="text-sm text-gray-700">{{ ans.user_answer }}</p>
+                        <p class="text-sm text-gray-700 whitespace-pre-wrap">{{ ans.user_answer }}</p>
                     </div>
                     {% if ans.ai_feedback %}
-                    <div class="text-sm text-gray-500 mb-1">
+                    <div class="text-sm text-gray-500">
                         <span class="font-medium text-gray-600">AI评价：</span>{{ ans.ai_feedback }}
                     </div>
                     {% endif %}
-                    {% if ans.guidance %}
-                    <div class="text-sm text-blue-600 bg-blue-50 rounded-lg p-2 mt-2">
-                        <span class="font-medium">引导：</span>{{ ans.guidance }}
+                    {% if ans.concept_gaps %}
+                    <div class="flex flex-wrap gap-1 mt-2">
+                        {% for gap in ans.concept_gaps %}
+                        <span class="text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full">{{ gap }}</span>
+                        {% endfor %}
                     </div>
                     {% endif %}
                 </div>
-
-        {% if loop.last or answers[loop.index0 + 1].question_id != ans.question_id %}
             </div>
         </div>
-        {% endif %}
         {% endfor %}
     </div>
 
     {% if not answers %}
     <div class="bg-white rounded-2xl shadow-sm p-12 border border-gray-100 text-center">
         <p class="text-gray-400">本次测试暂无答题记录</p>
+    </div>
+    {% endif %}
+
+    <!-- 操作按钮 -->
+    {% if session.completed_at and current_user_id %}
+    <div class="flex gap-4 justify-center mt-6">
+        <a href="/learn?session_id={{ session.id }}&user_id={{ current_user_id }}"
+            class="bg-primary hover:bg-primary-dark text-white font-bold py-3 px-8 rounded-xl transition">
+            进入学习模式
+        </a>
     </div>
     {% endif %}
 </div>

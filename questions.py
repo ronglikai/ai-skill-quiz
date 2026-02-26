@@ -109,19 +109,31 @@ QUESTIONS = [
     },
     {
         "id": 8,
-        "category": "SKILL.md配置",
-        "difficulty": "进阶",
-        "question": "SKILL.md中有哪些可选的YAML字段？分别有什么作用？请至少说出4个。",
+        "category": "实操排错",
+        "difficulty": "重点",
+        "question": """以下是一个Skill的YAML frontmatter，请找出其中的所有错误并说明如何修正：
+
+```yaml
+---
+name: Weekly Report Generator
+description: 生成周报
+license: MIT
+compatibility:
+  - claude-ai
+  - claude-code
+metadata:
+  author: 张三
+  version: 1.0
+---
+```""",
         "key_points": [
-            "license——开源协议，说明使用权限",
-            "compatibility——指定支持的平台列表（claude-ai, claude-code, api）",
-            "metadata.author——创建者名称或组织",
-            "metadata.version——版本号，建议用语义化版本",
-            "metadata.category——分类标签",
-            "metadata.tags——关键词列表，便于搜索",
-            "allowed-tools——允许Skill使用的工具白名单",
+            "name字段格式错误——必须用kebab-case（小写+短横线），不能有大写字母和空格",
+            "正确写法应该是 weekly-report-generator",
+            "description太模糊——只写了'生成周报'，Claude无法判断何时触发",
+            "应该用三段式：做什么+何时使用+关键能力",
+            "version建议用语义化版本如1.0.0",
         ],
-        "reference_answer": "SKILL.md的可选YAML字段包括：1）license——开源协议，如MIT、Apache-2.0，用于说明使用权限；2）compatibility——支持平台列表，如[claude-ai, claude-code, api]；3）metadata.author——创建者名称；4）metadata.version——版本号，建议用语义化版本如1.0.0；5）metadata.category——分类标签；6）metadata.tags——关键词列表便于搜索；7）allowed-tools——允许Skill使用的工具白名单，不填则使用代理默认工具集。",
+        "reference_answer": "有两个关键错误：1）name字段 'Weekly Report Generator' 格式不对——必须使用kebab-case（全小写+短横线分隔），应改为 'weekly-report-generator'，且必须与文件夹名一致。2）description只写了'生成周报'太模糊——Claude完全依赖description来判断是否调用该Skill，太模糊会导致误触发或漏触发。应改为三段式，如：'根据本周工作内容生成结构化周报。当用户需要整理周报、汇总本周成果时使用。支持从任务列表和会议记录提取信息，输出Markdown格式周报。' 另外version建议用语义化版本1.0.0。",
     },
     # ===== 第四部分：Skill设计思维 =====
     {
@@ -140,15 +152,27 @@ QUESTIONS = [
     },
     {
         "id": 10,
-        "category": "Skill设计思维",
+        "category": "实操排错",
         "difficulty": "重点",
-        "question": "在写SKILL.md之前，应该先问自己哪三个正确的问题？请分别解释每个问题的重要性。",
+        "question": """以下Skill文件夹结构有什么问题？请找出所有错误：
+
+```
+Notion_Project_Setup/
+├── SKILL.md
+├── README.md
+├── references/
+│   └── notion-api-docs.md
+└── scripts/
+    └── setup.py
+```""",
         "key_points": [
-            "问题一：这个Skill在什么情况下应该被触发？什么情况下不该触发？——触发边界是Skill失败最常见的原因",
-            "问题二：用户的输入可能是什么形状？边界情况怎么处理？——Skill不能等用户澄清，必须在正文里写清楚处理方式",
-            "问题三：这个Skill运行时，Claude的上下文里可能还有什么？——好的Skill不假设自己是唯一被加载的Skill",
+            "文件夹名 Notion_Project_Setup 不符合kebab-case规范——不能有大写字母和下划线",
+            "正确命名应该是 notion-project-setup",
+            "文件夹内包含README.md——Skill文件夹不允许有README.md",
+            "说明内容应放在SKILL.md中或references/文件夹里",
+            "SKILL.md中的name字段也必须与文件夹名一致",
         ],
-        "reference_answer": "写SKILL.md前应问三个问题：1）这个Skill什么时候该触发、什么时候不该触发？——触发边界是Skill失败最常见的原因，description太宽泛会误触发、太窄会漏触发。2）用户输入可能是什么形状？边界情况怎么处理？——不同于提示词可以等下一条消息澄清，Skill必须在正文中预先写明：如果缺少X就先询问，如果是Y格式就执行步骤A。3）Skill运行时上下文里可能还有什么？——设计良好的Skill不假设自己是唯一被加载的Skill，需要能在旁边还有其他Skill的情况下正常工作。",
+        "reference_answer": "有两个错误：1）文件夹名 'Notion_Project_Setup' 不符合规范——Skill文件夹必须使用kebab-case（全小写+短横线），不能有大写字母和下划线。应改为 'notion-project-setup'。同时SKILL.md中的name字段也必须与文件夹名完全一致。2）文件夹内包含README.md——Skill规范明确禁止在Skill文件夹中放README.md文件。如果有项目说明需求，应将内容放在SKILL.md的正文中或者放到references/文件夹里。其他部分（SKILL.md、references/、scripts/）的结构是正确的。",
     },
     {
         "id": 11,
@@ -180,31 +204,46 @@ QUESTIONS = [
     },
     {
         "id": 13,
-        "category": "测试与排查",
+        "category": "实操排错",
         "difficulty": "重点",
-        "question": "如果你的Skill上传失败了，可能是哪些原因？请列举至少3种常见原因及其解决方法。",
+        "question": """以下SKILL.md的正文（执行步骤部分）有什么问题？请指出写法上的缺陷：
+
+```markdown
+## 执行步骤
+
+帮用户分析数据，生成好看的图表，然后写一份报告。
+如果数据有问题就处理一下。
+输出要专业。
+```""",
         "key_points": [
-            "主文件命名不对——必须是SKILL.md（全大写），不能是skill.md或Skill.md",
-            "文件夹命名不规范——必须是kebab-case，不能有空格或大写字母",
-            "包含README.md——删除Skill文件夹内的README.md",
-            "name字段含claude或anthropic——这是系统保留词",
-            "YAML语法错误——检查frontmatter的缩进",
+            "步骤完全不具体——'分析数据'没有说明用什么方法分析、分析哪些维度",
+            "'好看的图表'是模糊主观的描述——应明确图表类型（柱状图/折线图）、包含哪些字段",
+            "'数据有问题就处理一下'是典型的提示词思维——没有定义什么算'有问题'、如何处理",
+            "Skill必须精确因为你不在场——每个含糊处都会导致每次执行结果不同",
+            "'输出要专业'没有定义标准——应说明输出格式、包含哪些部分、用什么语气",
+            "缺少输入要求——没有说明接受什么格式的数据",
+            "缺少边界情况处理——如果用户没提供数据怎么办",
         ],
-        "reference_answer": "Skill上传失败的常见原因：1）主文件命名错误——文件名必须是SKILL.md（全大写），skill.md、Skill.md、SKILL.MD都会失败，需修改为正确命名。2）文件夹命名不规范——必须使用kebab-case（小写+短横线），不能有空格、大写字母或下划线。3）文件夹内包含README.md——需删除README.md，将说明内容移到SKILL.md或references/文件夹中。4）name字段包含claude或anthropic——这是系统保留词，需更换名称。5）YAML语法错误——YAML对缩进敏感，检查frontmatter格式是否正确。",
+        "reference_answer": "这段执行步骤犯了典型的'提示词思维残留'错误，把写提示词的习惯带到了Skill中。核心缺陷：1）'分析数据'完全不具体——应明确分析哪些维度（趋势、对比、占比等）、用什么方法。2）'好看的图表'是主观模糊词——应指定图表类型和包含字段。3）'数据有问题就处理一下'没有定义标准——什么是'有问题'？缺失值怎么办？异常值怎么办？这些都应写清楚。4）'输出要专业'没有可执行标准——应定义输出格式模板、包含哪些section。5）缺少输入要求和边界情况处理。核心原则：写提示词时含糊没关系（你在场可以追问），但Skill必须精确（你不在场，每个含糊处每次都会出错）。",
     },
     {
         "id": 14,
-        "category": "测试与排查",
-        "difficulty": "进阶",
-        "question": "如果Skill不触发（该用的时候没被调用），或者被错误触发（不该用的时候被调用了），分别应该怎么排查和修复？",
+        "category": "实操排错",
+        "difficulty": "重点",
+        "question": """以下两个description，哪个更好？为什么？请分析各自的问题。
+
+A: `description: 帮助用户处理各种文档和数据相关的任务`
+
+B: `description: 将CSV销售数据按月汇总，计算环比增长率和TOP5产品排名，生成Markdown格式的月度销售简报。当用户需要分析销售数据、生成销售月报时使用。支持CSV格式输入，输出结构化Markdown报告。`""",
         "key_points": [
-            "不触发的原因：description太模糊/太窄，缺少具体触发场景和关键词",
-            "不触发的修复：在description中加入具体触发场景和关键词",
-            "不触发也可能是YAML语法错误导致Skill未被正确解析",
-            "错误触发的原因：description过于宽泛",
-            "错误触发的修复：缩小description范围，加入'仅当...'等限制语",
+            "B明显更好——遵循了三段式结构：做什么+何时使用+关键能力",
+            "A的问题：太宽泛，'各种文档和数据'会导致大量误触发",
+            "A没有指明具体的触发场景，Claude无法判断何时该用",
+            "B明确了输入格式（CSV）、处理内容（销售数据）、输出格式（Markdown）",
+            "B包含了具体的触发关键词：分析销售数据、生成销售月报",
+            "description不是简介，是精确的触发规则——太宽会误触发，太窄会漏触发",
         ],
-        "reference_answer": "Skill不触发时：最可能是description太模糊或太窄——需要在description中加入具体的触发场景和关键词，比如'当用户说分析数据、生成报告时触发'。也可能是YAML语法错误导致Skill未被正确解析，需检查frontmatter缩进。Skill被错误触发时：原因通常是description过于宽泛，解决方法是缩小description范围，加入限制语如'仅当用户需要分析营销数据时使用，不适用于财务数据分析'，让Claude能准确区分该Skill的适用边界。",
+        "reference_answer": "B明显更好。A的问题是太宽泛——'处理各种文档和数据相关的任务'几乎匹配所有请求，会导致大量误触发，Claude无法判断何时该调用。B遵循了description最佳实践的三段式结构：1）做什么——将CSV销售数据按月汇总，计算环比增长率和TOP5产品排名；2）何时使用——当用户需要分析销售数据、生成销售月报时；3）关键能力——支持CSV格式输入，输出Markdown报告。核心原则：description不是Skill的简介，而是精确的触发规则。Claude完全依赖它来判断是否调用该Skill。",
     },
     # ===== 第六部分：高级模式与实践 =====
     {
@@ -235,7 +274,7 @@ QUESTIONS = [
         ],
         "reference_answer": "Context Engineering（上下文工程）是2025年随Agent成为主流而提出的设计方法论，核心是'在上下文窗口里填入恰好合适的信息以完成下一步任务'。与Prompt Engineering的区别是：后者关注'如何问好问题'，前者关注'AI执行时能看到什么、不能看到什么'。它有五大维度：Offloading（大内容存文件只留引用）、Reduction（压缩旧结果释放空间）、Retrieval（按需从外部取回信息）、Isolation（子代理有独立上下文）、Caching（保持前部稳定提高缓存命中率）。与Skill的关系是：你写的每一个SKILL.md，本质就是在做Context Engineering——决定在某个触发时刻向AI的上下文注入什么信息。",
     },
-    # ===== 第七部分：概念辨析 =====
+    # ===== 第七部分：概念辨析与实操 =====
     {
         "id": 17,
         "category": "概念辨析",
@@ -252,44 +291,61 @@ QUESTIONS = [
     },
     {
         "id": 18,
-        "category": "概念辨析",
+        "category": "实操编写",
         "difficulty": "重点",
-        "question": "Skill和CLAUDE.md有什么区别？分别适合存放什么类型的内容？",
+        "question": """假设你要为团队创建一个"会议纪要生成"Skill，请写出它的description字段（使用三段式结构）。要求：输入是会议录音转写文本，输出是结构化会议纪要。""",
         "key_points": [
-            "CLAUDE.md是项目级的常驻说明，每次Claude Code启动时都会读取",
-            "Skill是按需加载的专项技能，只在用户请求匹配时才读取",
-            "CLAUDE.md适合放项目架构、编码规范、技术栈说明、运行命令等",
-            "Skill适合封装特定的工作流程，如数据分析流水线、报告生成等",
+            "应包含'做什么'——从会议录音转写文本提取要点，生成结构化会议纪要",
+            "应包含'何时使用'——当用户提供会议录音文字稿/转写文本并需要整理会议纪要时",
+            "应包含'关键能力'——支持输入转写文本，输出包含议题、决议、待办事项的结构化纪要",
+            "应有具体触发词：会议纪要、会议记录、整理会议、会议总结等",
+            "不能太宽泛（如'处理会议相关内容'）也不能太窄",
         ],
-        "reference_answer": "CLAUDE.md是项目级的常驻说明，每次Claude Code启动时都会自动读取，适合放项目架构概述、技术栈说明、编码规范、运行命令、注意事项等需要Claude始终了解的信息。Skill是按需加载的专项技能，只在用户请求匹配时才被读取和执行，适合封装特定的工作流程，如营销数据分析流水线、报告生成模板、代码审查流程等可复用的任务。简单说：CLAUDE.md是背景知识（始终在场），Skill是专业技能（按需调用）。",
+        "reference_answer": "一个好的description示例：'从会议录音转写文本中提取关键信息，生成包含议题摘要、讨论要点、决议事项和待办任务的结构化会议纪要。当用户提供会议转写文稿并需要整理会议纪要、会议记录、会议总结时使用。支持纯文本格式的会议转写输入，输出Markdown格式的结构化纪要，包含参会人员、议题列表、决议和Action Items。' 关键要点：三段式结构完整（做什么+何时使用+关键能力），包含具体触发词，明确了输入输出格式。",
     },
-    # ===== 第八部分：实操应用 =====
+    # ===== 第八部分：实操编写 =====
     {
         "id": 19,
-        "category": "实操应用",
+        "category": "实操编写",
         "difficulty": "重点",
-        "question": "创建Skill的推荐步骤是什么？为什么建议最后才写description？",
+        "question": """以下Skill的执行步骤存在"提示词思维残留"，请改写为符合Skill规范的精确步骤：
+
+原始版本：
+```
+## 步骤
+1. 读取用户提供的数据
+2. 分析数据中的趋势
+3. 生成一份专业的分析报告
+4. 如果有异常数据就标注出来
+```""",
         "key_points": [
-            "第一步：识别值得做成Skill的任务（每周至少做一次、有固定输入输出、每次都要解释同样背景）",
-            "第二步：手动做一次，像法庭书记员一样记录每个决策点",
-            "第三步：起草SKILL.md——先写步骤→再写输入要求→再写输出格式→最后写description",
-            "第四步：检查是否有提示词思维残留（模糊词、隐性假设、未处理的边界情况）",
-            "第五步：从最小可用版本开始迭代",
-            "最后写description是因为：在步骤写完之前，你往往不清楚Skill的真正边界，应让步骤来塑造描述",
+            "应明确数据格式要求——如CSV/Excel，包含哪些列",
+            "应定义'趋势'的具体维度——环比变化、同比变化、移动平均等",
+            "应定义报告的输出格式模板——包含哪些section、什么格式",
+            "应定义'异常'的判断标准——偏离均值2个标准差？超过阈值？",
+            "应增加边界情况处理——数据为空怎么办？格式不对怎么办？",
+            "核心原则：Skill中你不在场，每个模糊词都会导致不可预测的执行结果",
         ],
-        "reference_answer": "推荐的创建步骤：1）识别值得做Skill的任务——每周至少做一次、有固定输入输出格式、每次要解释同样背景。2）手动做一遍并详细记录每个操作、判断依据和边界情况处理。3）起草SKILL.md，按此顺序：先写步骤（核心）→再写输入要求→再写输出格式→最后写description。4）自检是否有提示词思维残留，把模糊词替换为具体标准。5）从最小可用版本开始迭代。之所以最后写description，是因为在步骤写完之前你往往不清楚Skill的真正边界，应该让步骤来塑造描述而不是反过来。",
+        "reference_answer": "改写后应类似：'## 步骤\n1. 检查输入数据格式：仅接受CSV格式，必须包含date和value列。如果格式不对，提示用户修改并中止。如果数据少于3行，提示数据量不足。\n2. 数据清洗：删除value列中的空值行，将日期统一为YYYY-MM-DD格式。\n3. 趋势分析：计算月度汇总值、环比增长率、3个月移动平均线。\n4. 异常检测：标注偏离月度均值超过2个标准差的数据点为异常值。\n5. 生成报告（Markdown格式），包含以下部分：数据概览（行数、时间范围、均值）、趋势图表描述、异常值列表（日期+值+偏离度）、核心发现（3条以内）。' 核心改进：每一步都有可执行的标准和边界情况处理。",
     },
     {
         "id": 20,
-        "category": "实操应用",
-        "difficulty": "重点",
-        "question": "Skill的三大设计原则是什么？请分别解释每个原则的含义。",
+        "category": "实操编写",
+        "difficulty": "进阶",
+        "question": """请为以下场景设计一个完整的SKILL.md的YAML frontmatter和执行步骤大纲：
+
+场景：团队每周需要从Notion数据库中提取本周完成的任务，按项目分组统计完成数量，然后生成一份简洁的周报发到指定频道。
+
+要求：写出name、description和关键执行步骤（不需要完整，写出框架即可）。""",
         "key_points": [
-            "渐进式披露（Progressive Disclosure）——三级加载机制，按需消耗上下文",
-            "可组合性（Composability）——Skill能与其他Skill协同工作，不能假设自己是唯一技能",
-            "可移植性（Portability）——Skill在Claude.ai、Claude Code和API三个环境中行为一致，一次制作全平台通用",
+            "name应为kebab-case格式，如 weekly-task-report",
+            "description应包含三段式：做什么+何时使用+关键能力",
+            "步骤应明确：从哪个Notion数据库读取、筛选条件是什么",
+            "步骤应定义输出格式：周报包含哪些部分",
+            "应处理边界情况：本周没有完成任务怎么办",
+            "应有具体而非模糊的操作指令",
         ],
-        "reference_answer": "Skill的三大设计原则：1）渐进式披露（Progressive Disclosure）——采用三级加载机制，只在需要时才加载详细内容，避免浪费上下文空间。2）可组合性（Composability）——Claude可以同时加载多个Skill，你的Skill应该能与其他Skill协同工作，不能假设自己是唯一被加载的技能。3）可移植性（Portability）——Skill在Claude.ai、Claude Code和API三个环境中行为完全一致，一次制作即可全平台通用。这三个原则来自Anthropic官方文档，是Skill设计的基石。",
+        "reference_answer": "示例：\n```yaml\n---\nname: weekly-task-report\ndescription: 从Notion任务数据库提取本周已完成任务，按项目分组统计完成数量和完成人，生成Markdown格式周报。当用户需要生成周报、统计本周任务完成情况时使用。支持Notion数据库作为数据源，输出按项目分组的结构化周报。\n---\n```\n\n执行步骤大纲：\n1. 通过Notion MCP连接，查询任务数据库中status='Done'且完成日期在本周一至今天的所有任务\n2. 按project字段分组，统计每个项目的完成任务数和负责人\n3. 如果本周无完成任务，生成'本周暂无完成任务'的简要说明\n4. 生成Markdown周报，包含：日期范围、各项目完成统计表格、本周亮点（完成最多的项目）、总计\n5. 输出周报内容供用户确认后发送\n\n关键要素：name用kebab-case、description三段式完整、步骤具体可执行、有边界情况处理。",
     },
 ]
 

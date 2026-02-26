@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}对话学习 - AI Skill 知识测试系统{% endblock %}
+{% block title %}逐题学习 - AI Skill 知识测试系统{% endblock %}
 
 {% block nav_links %}
 <a href="/results?session_id={{ session_id }}&user_id={{ user_id }}" class="text-gray-600 hover:text-primary transition">查看报告</a>
@@ -10,127 +10,351 @@
 {% endblock %}
 
 {% block content %}
-<div class="max-w-3xl mx-auto flex flex-col" style="height: calc(100vh - 120px);">
-    <!-- 头部 -->
-    <div class="bg-white rounded-t-2xl shadow-sm border border-gray-100 border-b-0 px-6 py-4">
-        <h1 class="text-lg font-bold text-gray-800">对话学习</h1>
-        <p class="text-xs text-gray-400 mt-0.5">AI导师会根据你的测试表现，用对话引导你理解薄弱概念</p>
-    </div>
-
-    <!-- 消息区 -->
-    <div id="chatMessages" class="flex-1 overflow-y-auto bg-gray-50 border-x border-gray-100 px-6 py-4 space-y-4">
-        <!-- 消息会在这里动态插入 -->
-    </div>
-
-    <!-- 输入区 -->
-    <div class="bg-white rounded-b-2xl shadow-sm border border-gray-100 border-t-0 px-6 py-4">
-        <div class="flex gap-3">
-            <textarea id="chatInput" rows="2" placeholder="输入你的想法或问题..."
-                class="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition resize-none text-sm"></textarea>
-            <button onclick="sendMessage()" id="sendBtn"
-                class="bg-primary hover:bg-primary-dark text-white font-medium px-6 rounded-xl transition self-end flex items-center gap-2">
-                <span>发送</span>
-                <svg class="w-4 h-4 hidden" id="sendSpinner" viewBox="0 0 24 24" fill="none">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-            </button>
+<div class="max-w-4xl mx-auto">
+    <!-- 进度条 -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-6">
+        <div class="flex items-center justify-between mb-2">
+            <h1 class="text-lg font-bold text-gray-800">逐题学习模式</h1>
+            <span class="text-sm text-gray-500">
+                <span id="currentIdx">1</span> / <span id="totalCount">--</span>
+                <span class="ml-2 text-xs text-green-600 font-medium" id="passedCount"></span>
+            </span>
         </div>
-        <div class="text-xs text-gray-400 mt-2">Enter 发送 / Shift+Enter 换行</div>
+        <div class="w-full bg-gray-100 rounded-full h-2">
+            <div id="progressBar" class="bg-primary h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+        </div>
+    </div>
+
+    <!-- 题目卡片区 -->
+    <div id="questionCard" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+        <!-- 题目头 -->
+        <div class="px-6 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <span class="text-sm font-bold text-gray-600" id="qNumber">#1</span>
+                <span class="text-xs bg-primary-50 text-primary px-2 py-0.5 rounded-full" id="qCategory"></span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-medium" id="qScore"></span>
+                <span class="text-xs px-2 py-0.5 rounded-full font-medium" id="qStatus"></span>
+            </div>
+        </div>
+
+        <div class="p-6">
+            <!-- 原题 -->
+            <h3 class="text-base font-bold text-gray-800 mb-4" id="qText"></h3>
+
+            <!-- 你的回答 -->
+            <div class="mb-4">
+                <div class="text-xs font-medium text-gray-500 mb-1">你的回答</div>
+                <div class="bg-gray-50 rounded-lg p-3 text-sm text-gray-700 whitespace-pre-wrap" id="qUserAnswer"></div>
+            </div>
+
+            <!-- 参考答案（折叠） -->
+            <details class="mb-4 group">
+                <summary class="text-xs font-medium text-primary cursor-pointer hover:text-primary-dark transition select-none">
+                    查看参考答案
+                </summary>
+                <div class="mt-2 bg-green-50 rounded-lg p-3 text-sm text-green-800 leading-relaxed whitespace-pre-wrap" id="qRefAnswer"></div>
+            </details>
+        </div>
+    </div>
+
+    <!-- AI对话区 -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+        <div class="px-6 py-3 bg-gray-50 border-b border-gray-100">
+            <div class="text-sm font-bold text-gray-700">AI 导师对话</div>
+            <div class="text-xs text-gray-400">AI会分析你的回答，然后用延伸问题验证你的理解</div>
+        </div>
+
+        <!-- 消息区 -->
+        <div id="chatMessages" class="px-6 py-4 space-y-4 max-h-96 overflow-y-auto" style="min-height: 120px;">
+            <!-- 加载中 -->
+            <div id="aiLoading" class="flex justify-start">
+                <div class="msg-ai">
+                    <div class="flex gap-1">
+                        <span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
+                        <span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay:0.1s"></span>
+                        <span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay:0.2s"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 输入区 -->
+        <div class="px-6 py-4 border-t border-gray-100">
+            <div class="flex gap-3" id="inputArea">
+                <textarea id="chatInput" rows="2" placeholder="输入你的回答..."
+                    class="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition resize-none text-sm"
+                    disabled></textarea>
+                <button onclick="sendReply()" id="sendBtn"
+                    class="bg-primary hover:bg-primary-dark text-white font-medium px-6 rounded-xl transition self-end disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled>
+                    发送
+                </button>
+            </div>
+            <div class="text-xs text-gray-400 mt-2">Enter 发送 / Shift+Enter 换行</div>
+        </div>
+    </div>
+
+    <!-- 下一题/完成按钮 -->
+    <div id="navButtons" class="flex gap-4 justify-center hidden">
+        <button onclick="nextQuestion()" id="nextBtn"
+            class="bg-primary hover:bg-primary-dark text-white font-bold py-3 px-10 rounded-xl transition text-lg">
+            下一题
+        </button>
+        <a href="/dashboard?user_id={{ user_id }}" id="finishBtn"
+            class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-8 rounded-xl transition hidden">
+            完成学习
+        </a>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <style>
-.msg-ai { background: white; border: 1px solid #e5e7eb; }
-.msg-user { background: #E6F9F7; border: 1px solid #B3EDE8; }
-.msg-ai, .msg-user { border-radius: 1rem; padding: 0.75rem 1rem; max-width: 85%; word-wrap: break-word; }
-#sendSpinner { animation: spin 1s linear infinite; }
-@keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+.msg-ai { background: white; border: 1px solid #e5e7eb; border-radius: 1rem; padding: 0.75rem 1rem; max-width: 90%; word-wrap: break-word; }
+.msg-user { background: #E6F9F7; border: 1px solid #B3EDE8; border-radius: 1rem; padding: 0.75rem 1rem; max-width: 85%; word-wrap: break-word; }
+.msg-passed { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 1rem; padding: 0.75rem 1rem; max-width: 90%; }
 </style>
 <script>
-const SID = {{ session_id }};
-let history = []; // {role, content}
+const ANSWERS = {{ answers_json | tojson }};
+let currentIndex = 0;
+let passedSet = new Set();
+let chatHistory = [];
+let followupQuestion = '';
 let sending = false;
+let questionPassed = false;
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 发起首次对话（AI先发言）
-    sendToAI('你好，我刚完成了AI Skill知识测试，请帮我开始学习。', true);
+    document.getElementById('totalCount').textContent = ANSWERS.length;
+    if (ANSWERS.length > 0) {
+        loadQuestion(0);
+    }
 });
 
-function appendMessage(role, text) {
-    const container = document.getElementById('chatMessages');
-    const wrapper = document.createElement('div');
-    wrapper.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+function loadQuestion(idx) {
+    currentIndex = idx;
+    const a = ANSWERS[idx];
+    questionPassed = false;
+    chatHistory = [];
+    followupQuestion = '';
 
-    const bubble = document.createElement('div');
-    bubble.className = role === 'user' ? 'msg-user' : 'msg-ai';
-    bubble.innerHTML = `<div class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">${escapeHtml(text)}</div>`;
+    // 更新题目信息
+    document.getElementById('currentIdx').textContent = idx + 1;
+    document.getElementById('qNumber').textContent = '#' + a.question_id;
+    document.getElementById('qCategory').textContent = a.category;
+    document.getElementById('qText').textContent = a.question;
+    document.getElementById('qUserAnswer').textContent = a.user_answer;
+    document.getElementById('qRefAnswer').textContent = a.reference_answer;
 
-    if (role === 'assistant') {
-        const label = document.createElement('div');
-        label.className = 'text-xs text-primary font-medium mb-1';
-        label.textContent = 'AI 导师';
-        wrapper.appendChild(document.createElement('div'));
-        wrapper.firstChild.appendChild(label);
-        wrapper.firstChild.appendChild(bubble);
+    // 分数
+    const scoreEl = document.getElementById('qScore');
+    const s = a.score || 0;
+    scoreEl.textContent = s + '分';
+    scoreEl.className = 'text-xs font-medium ' + (s >= 60 ? 'text-green-600' : s >= 40 ? 'text-yellow-600' : 'text-red-500');
+
+    // 状态
+    const statusEl = document.getElementById('qStatus');
+    if (a.is_correct) {
+        statusEl.textContent = '已掌握';
+        statusEl.className = 'text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700';
     } else {
-        wrapper.appendChild(bubble);
+        statusEl.textContent = '需加强';
+        statusEl.className = 'text-xs px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-700';
     }
 
-    container.appendChild(wrapper);
-    container.scrollTop = container.scrollHeight;
+    // 进度
+    const pct = ((idx) / ANSWERS.length) * 100;
+    document.getElementById('progressBar').style.width = pct + '%';
+    document.getElementById('passedCount').textContent = passedSet.size > 0 ? `已通过 ${passedSet.size} 题` : '';
+
+    // 重置对话区
+    const msgContainer = document.getElementById('chatMessages');
+    msgContainer.innerHTML = '<div id="aiLoading" class="flex justify-start"><div class="msg-ai"><div class="flex gap-1"><span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span><span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay:0.1s"></span><span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay:0.2s"></span></div></div></div>';
+
+    // 隐藏导航按钮
+    document.getElementById('navButtons').classList.add('hidden');
+
+    // 禁用输入
+    document.getElementById('chatInput').disabled = true;
+    document.getElementById('sendBtn').disabled = true;
+    document.getElementById('chatInput').value = '';
+
+    // 关闭参考答案折叠
+    document.querySelector('details').removeAttribute('open');
+
+    // 调用AI初始化分析
+    initLearning(a);
 }
 
-async function sendToAI(userMsg, isInit = false) {
-    if (!isInit) {
-        appendMessage('user', userMsg);
-        history.push({ role: 'user', content: userMsg });
-    }
-
-    // 显示打字指示器
-    const typing = document.createElement('div');
-    typing.className = 'flex justify-start';
-    typing.id = 'typing';
-    typing.innerHTML = '<div class="msg-ai"><div class="flex gap-1"><span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span><span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay:0.1s"></span><span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay:0.2s"></span></div></div>';
-    document.getElementById('chatMessages').appendChild(typing);
-
+async function initLearning(a) {
     try {
-        const resp = await fetch(`/api/session/${SID}/chat`, {
+        const resp = await fetch('/api/learn/init', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                message: userMsg,
-                history: isInit ? [] : history.slice(0, -1), // 不含刚加的user消息
+                question: a.question,
+                reference_answer: a.reference_answer,
+                user_answer: a.user_answer,
+                score: a.score || 0,
+                feedback: a.feedback || '',
+                concept_gaps: a.concept_gaps || [],
             }),
         });
         const data = await resp.json();
 
-        document.getElementById('typing')?.remove();
-        appendMessage('assistant', data.reply);
-        history.push({ role: 'assistant', content: data.reply });
+        document.getElementById('aiLoading')?.remove();
+
+        // 解析AI回复：用---分隔分析和追问
+        const parts = data.reply.split('---');
+        const analysis = parts[0].trim();
+        const followup = parts.length > 1 ? parts[1].trim() : '';
+        followupQuestion = followup;
+
+        // 显示分析
+        appendMessage('assistant', analysis);
+
+        if (followup) {
+            // 延迟显示追问
+            setTimeout(() => {
+                appendMessage('assistant', followup);
+                chatHistory.push({ role: 'assistant', content: analysis + '\n\n' + followup });
+                // 启用输入
+                document.getElementById('chatInput').disabled = false;
+                document.getElementById('sendBtn').disabled = false;
+                document.getElementById('chatInput').focus();
+            }, 800);
+        } else {
+            chatHistory.push({ role: 'assistant', content: analysis });
+            document.getElementById('chatInput').disabled = false;
+            document.getElementById('sendBtn').disabled = false;
+        }
     } catch (e) {
-        document.getElementById('typing')?.remove();
-        appendMessage('assistant', '抱歉，网络出了点问题，请重试。');
+        document.getElementById('aiLoading')?.remove();
+        appendMessage('assistant', '加载失败，请刷新页面重试。');
     }
 }
 
-async function sendMessage() {
-    if (sending) return;
+async function sendReply() {
+    if (sending || questionPassed) return;
     const input = document.getElementById('chatInput');
     const msg = input.value.trim();
     if (!msg) return;
 
     sending = true;
     input.value = '';
-    document.getElementById('sendSpinner').classList.remove('hidden');
+    document.getElementById('sendBtn').disabled = true;
 
-    await sendToAI(msg);
+    appendMessage('user', msg);
+    chatHistory.push({ role: 'user', content: msg });
+
+    // 显示loading
+    showTyping();
+
+    const a = ANSWERS[currentIndex];
+
+    try {
+        const resp = await fetch('/api/learn/evaluate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                question: a.question,
+                reference_answer: a.reference_answer,
+                followup_question: followupQuestion,
+                user_reply: msg,
+                chat_history: chatHistory,
+            }),
+        });
+        const data = await resp.json();
+
+        removeTyping();
+
+        if (data.passed) {
+            // 通过
+            questionPassed = true;
+            passedSet.add(a.question_id);
+            appendMessage('passed', data.reply);
+            chatHistory.push({ role: 'assistant', content: data.reply });
+
+            // 显示导航按钮
+            showNavButtons();
+
+            // 禁用输入
+            document.getElementById('chatInput').disabled = true;
+            document.getElementById('sendBtn').disabled = true;
+        } else {
+            // 未通过，继续对话
+            appendMessage('assistant', data.reply);
+            chatHistory.push({ role: 'assistant', content: data.reply });
+            document.getElementById('sendBtn').disabled = false;
+            document.getElementById('chatInput').focus();
+        }
+    } catch (e) {
+        removeTyping();
+        appendMessage('assistant', '网络出错，请重试。');
+        document.getElementById('sendBtn').disabled = false;
+    }
 
     sending = false;
-    document.getElementById('sendSpinner').classList.add('hidden');
-    input.focus();
+}
+
+function showNavButtons() {
+    const nav = document.getElementById('navButtons');
+    nav.classList.remove('hidden');
+
+    if (currentIndex >= ANSWERS.length - 1) {
+        // 最后一题
+        document.getElementById('nextBtn').classList.add('hidden');
+        document.getElementById('finishBtn').classList.remove('hidden');
+    } else {
+        document.getElementById('nextBtn').classList.remove('hidden');
+        document.getElementById('finishBtn').classList.add('hidden');
+    }
+
+    // 更新进度到100%如果是最后一题
+    if (currentIndex >= ANSWERS.length - 1) {
+        document.getElementById('progressBar').style.width = '100%';
+    }
+}
+
+function nextQuestion() {
+    if (currentIndex < ANSWERS.length - 1) {
+        loadQuestion(currentIndex + 1);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+}
+
+function appendMessage(role, text) {
+    const container = document.getElementById('chatMessages');
+    const wrapper = document.createElement('div');
+
+    if (role === 'user') {
+        wrapper.className = 'flex justify-end';
+        wrapper.innerHTML = `<div class="msg-user"><div class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">${escapeHtml(text)}</div></div>`;
+    } else if (role === 'passed') {
+        wrapper.className = 'flex justify-start';
+        wrapper.innerHTML = `<div class="msg-passed"><div class="flex items-center gap-2 mb-1"><svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span class="text-xs font-bold text-green-700">通过</span></div><div class="text-sm text-green-800 leading-relaxed whitespace-pre-wrap">${escapeHtml(text)}</div></div>`;
+    } else {
+        wrapper.className = 'flex justify-start';
+        wrapper.innerHTML = `<div><div class="text-xs text-primary font-medium mb-1">AI 导师</div><div class="msg-ai"><div class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">${escapeHtml(text)}</div></div></div>`;
+    }
+
+    container.appendChild(wrapper);
+    container.scrollTop = container.scrollHeight;
+}
+
+function showTyping() {
+    const container = document.getElementById('chatMessages');
+    const el = document.createElement('div');
+    el.className = 'flex justify-start';
+    el.id = 'typing';
+    el.innerHTML = '<div class="msg-ai"><div class="flex gap-1"><span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span><span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay:0.1s"></span><span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay:0.2s"></span></div></div>';
+    container.appendChild(el);
+    container.scrollTop = container.scrollHeight;
+}
+
+function removeTyping() {
+    document.getElementById('typing')?.remove();
 }
 
 function escapeHtml(s) {
@@ -142,7 +366,7 @@ function escapeHtml(s) {
 document.getElementById('chatInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        sendMessage();
+        sendReply();
     }
 });
 </script>

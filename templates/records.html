@@ -112,7 +112,7 @@
                 </div>
                 <div class="flex items-center gap-3">
                     <div class="text-right">
-                        <span class="text-sm font-bold {% if s.unique_correct >= s.total_questions * 0.8 %}text-green-600{% elif s.unique_correct >= s.total_questions * 0.5 %}text-yellow-600{% else %}text-red-500{% endif %}">
+                        <span class="text-sm font-bold {% if s.correct_count >= s.total_questions * 0.8 %}text-green-600{% elif s.correct_count >= s.total_questions * 0.5 %}text-yellow-600{% else %}text-red-500{% endif %}">
                             {{ s.correct_count }}/{{ s.total_questions }}
                         </span>
                     </div>

@@ -113,11 +113,29 @@ async def learn_page(request: Request, session_id: int, user_id: int):
     session = db.get_session(session_id)
     if not session:
         return RedirectResponse("/", status_code=303)
+    # 获取答题数据，附上题目信息
+    answers = db.get_session_answers(session_id)
+    enriched = []
+    for ans in answers:
+        q = qbank.get_question_by_id(ans["question_id"])
+        if q:
+            enriched.append({
+                "question_id": ans["question_id"],
+                "question": q["question"],
+                "reference_answer": q["reference_answer"],
+                "category": q["category"],
+                "user_answer": ans["user_answer"],
+                "score": ans.get("score", 0) or 0,
+                "is_correct": ans.get("is_correct", False),
+                "feedback": ans.get("ai_feedback", ""),
+                "concept_gaps": ans.get("concept_gaps", []),
+            })
     return templates.TemplateResponse("learn.html", {
         "request": request,
         "session": session,
         "session_id": session_id,
         "user_id": user_id,
+        "answers_json": enriched,
     })
 
 
@@ -257,30 +275,51 @@ async def get_answers(session_id: int):
     return {"answers": enriched}
 
 
-@app.post("/api/session/{session_id}/chat")
-async def chat(session_id: int, request: Request):
-    """对话式学习"""
+@app.post("/api/learn/init")
+async def learn_init(request: Request):
+    """逐题学习：AI分析回答并提出延伸追问"""
     body = await request.json()
-    user_message = body.get("message", "").strip()
-    chat_history = body.get("history", [])
+    question = body.get("question", "")
+    reference_answer = body.get("reference_answer", "")
+    user_answer = body.get("user_answer", "")
+    score = body.get("score", 0)
+    feedback = body.get("feedback", "")
+    concept_gaps = body.get("concept_gaps", [])
 
-    if not user_message:
-        return {"reply": "请输入你的问题或想法。"}
-
-    # 获取综合分析数据
-    comp = db.get_comprehensive(session_id)
-    session = db.get_session(session_id)
-
-    reply = await ai_service.chat_response(
-        user_name=session["user_name"] if session else "同学",
-        weak_areas=comp.get("weak_areas", []) if comp else [],
-        strong_areas=comp.get("strong_areas", []) if comp else [],
-        summary=comp.get("summary", "") if comp else "",
-        chat_history=chat_history,
-        user_message=user_message,
+    reply = await ai_service.question_learning_init(
+        question=question,
+        reference_answer=reference_answer,
+        user_answer=user_answer,
+        score=score,
+        feedback=feedback,
+        concept_gaps=concept_gaps,
     )
 
     return {"reply": reply}
+
+
+@app.post("/api/learn/evaluate")
+async def learn_evaluate(request: Request):
+    """逐题学习：评估学员对延伸追问的回答"""
+    body = await request.json()
+    question = body.get("question", "")
+    reference_answer = body.get("reference_answer", "")
+    followup_question = body.get("followup_question", "")
+    user_reply = body.get("user_reply", "").strip()
+    chat_history = body.get("chat_history", [])
+
+    if not user_reply:
+        return {"passed": False, "reply": "请输入你的回答。"}
+
+    result = await ai_service.question_learning_evaluate(
+        question=question,
+        reference_answer=reference_answer,
+        followup_question=followup_question,
+        user_reply=user_reply,
+        chat_history=chat_history,
+    )
+
+    return result
 
 
 if __name__ == "__main__":

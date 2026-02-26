@@ -178,43 +178,102 @@ async def comprehensive_analysis(questions_and_answers: list) -> dict:
         }
 
 
-# ==================== 对话式学习引导 ====================
+# ==================== 逐题学习引导 ====================
 
-async def chat_response(user_name: str, weak_areas: list, strong_areas: list, summary: str, chat_history: list, user_message: str) -> str:
+async def question_learning_init(question: str, reference_answer: str, user_answer: str, score: int, feedback: str, concept_gaps: list) -> str:
     """
-    苏格拉底式对话教学
-    chat_history: [{"role": "assistant"/"user", "content": "..."}]
+    逐题学习：AI分析该题并提出一个延伸追问，验证学员是否真正掌握
     """
-    weak_text = "\n".join(f"- {w['area']}：{w['detail']}" for w in weak_areas) if weak_areas else "暂无明显薄弱点"
-    strong_text = "\n".join(f"- {s['area']}" for s in strong_areas) if strong_areas else "暂无"
+    gaps_text = "、".join(concept_gaps) if concept_gaps else "无明显盲点"
 
-    system_prompt = f"""你是一位耐心的AI技能教学导师，正在和{user_name}进行一对一学习辅导。
+    system_prompt = """你是一位AI Skill教学导师，正在帮学员针对一道具体题目进行深化学习。
 
-学员背景：
-- 测试总结：{summary}
-- 已掌握：{strong_text}
-- 需加强：{weak_text}
+你的任务：
+1. 先简要分析学员的回答（2-3句话），指出哪里答得好、哪里有不足
+2. 然后基于这道题的知识点，提出一个**新的延伸问题**来验证学员是否真正理解了核心概念
 
-教学方法——苏格拉底对话法：
-1. **不要直接给答案**——通过提问引导学员自己发现和思考
-2. **从已知搭到未知**——从学员已掌握的概念出发，搭桥到新概念
-3. **多用类比**——用日常生活的例子解释抽象的技术概念
-4. **一次一个点**——每次只聚焦一个知识点，确认理解后再下一个
-5. **积极鼓励**——肯定进步，对错误温和纠正
+延伸问题的要求：
+- 不能和原题重复，但要考察相同的核心知识点
+- 侧重"能否迁移运用"——比如给一个新场景让学员判断、或者让学员举一反三
+- 难度适中，不要太简单也不要超出原题的知识范围
+- 问题要具体、明确，让学员能直接回答
 
-对话风格：
-- 简洁友好，每次回复不超过150字
-- 适当用反问引导思考
-- 遇到正确理解时明确肯定并深化
-- 遇到误解时不直接否定，而是追问让学员自己发现矛盾
+回复格式（用---分隔两部分）：
+[对学员回答的分析和点评]
+---
+[你的延伸追问]
 
-如果是第一条消息（对话刚开始），请简要介绍自己，说明学员的薄弱领域，然后从最需要加强的一个概念开始提问引导。"""
+注意：简洁友好，分析部分不超过100字，追问部分不超过80字。"""
 
-    messages = [{"role": "system", "content": system_prompt}]
-    messages.extend(chat_history)
-    messages.append({"role": "user", "content": user_message})
+    user_prompt = f"""原题：{question}
+
+参考答案：{reference_answer}
+
+学员回答：{user_answer}
+得分：{score}/100
+评估反馈：{feedback}
+概念盲点：{gaps_text}
+
+请分析学员回答并提出延伸追问。"""
 
     try:
-        return await _call_kimi(messages, temperature=0.6)
+        return await _call_kimi([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ], temperature=0.5)
     except Exception as e:
-        return f"抱歉，对话服务暂时出错了：{str(e)[:100]}。请重试。"
+        return f"分析出错：{str(e)[:100]}。请重试。"
+
+
+async def question_learning_evaluate(question: str, reference_answer: str, followup_question: str, user_reply: str, chat_history: list) -> dict:
+    """
+    评估学员对延伸追问的回答，判断是否掌握
+    返回 {"passed": bool, "reply": str}
+    """
+    system_prompt = """你是一位AI Skill教学导师，正在评估学员对延伸问题的回答。
+
+评估标准：
+- 核心概念理解正确就算通过（passed=true）
+- 表述不完美但方向对也可以通过
+- 存在根本性理解错误则不通过（passed=false）
+
+回复要求：
+- 如果通过：简短肯定（1-2句），说明理解到位的点，鼓励进入下一题
+- 如果未通过：温和指出理解偏差，给出简要提示（不直接给答案），鼓励再想想
+- 如果学员在对话中已经展现了足够理解，可以直接判断通过
+
+你必须返回严格JSON（无markdown代码块包裹）：
+{"passed": true/false, "reply": "你的回复内容"}"""
+
+    history_text = ""
+    for h in chat_history:
+        role = "导师" if h["role"] == "assistant" else "学员"
+        history_text += f"{role}：{h['content']}\n"
+
+    user_prompt = f"""原题背景：{question}
+参考答案：{reference_answer}
+
+之前的延伸追问：{followup_question}
+
+对话记录：
+{history_text}
+
+学员最新回复：{user_reply}
+
+请评估学员是否理解了核心概念。"""
+
+    try:
+        content = await _call_kimi([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ], temperature=0.4)
+        result = _parse_json(content)
+        return {
+            "passed": result.get("passed", False),
+            "reply": result.get("reply", "评估出错，请重试。"),
+        }
+    except Exception as e:
+        return {
+            "passed": False,
+            "reply": f"评估服务暂时出错：{str(e)[:100]}。请重试。",
+        }
