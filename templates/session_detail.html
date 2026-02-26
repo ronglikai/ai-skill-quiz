@@ -65,7 +65,7 @@
                 </div>
             </div>
             <div class="p-6">
-                <h3 class="text-base font-bold text-gray-800 mb-4">{{ ans.question_text }}</h3>
+                <div class="text-base font-bold text-gray-800 mb-4 markdown-body question-text">{{ ans.question_text }}</div>
 
                 <!-- 用户回答 -->
                 <div class="mb-4 pl-4 border-l-2 {% if ans.is_correct %}border-green-300{% else %}border-gray-200{% endif %}">
@@ -107,4 +107,12 @@
     </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.querySelectorAll('.question-text').forEach(el => {
+    el.innerHTML = marked.parse(el.textContent);
+});
+</script>
 {% endblock %}

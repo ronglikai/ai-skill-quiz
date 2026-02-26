@@ -41,7 +41,7 @@
 
         <div class="p-6">
             <!-- 原题 -->
-            <h3 class="text-base font-bold text-gray-800 mb-4" id="qText"></h3>
+            <div class="text-base font-bold text-gray-800 mb-4 markdown-body" id="qText"></div>
 
             <!-- 你的回答 -->
             <div class="mb-4">
@@ -54,7 +54,7 @@
                 <summary class="text-xs font-medium text-primary cursor-pointer hover:text-primary-dark transition select-none">
                     查看参考答案
                 </summary>
-                <div class="mt-2 bg-green-50 rounded-lg p-3 text-sm text-green-800 leading-relaxed whitespace-pre-wrap" id="qRefAnswer"></div>
+                <div class="mt-2 bg-green-50 rounded-lg p-3 text-sm text-green-800 leading-relaxed markdown-body" id="qRefAnswer"></div>
             </details>
         </div>
     </div>
@@ -149,9 +149,9 @@ function loadQuestion(idx) {
     document.getElementById('currentIdx').textContent = idx + 1;
     document.getElementById('qNumber').textContent = '#' + a.question_id;
     document.getElementById('qCategory').textContent = a.category;
-    document.getElementById('qText').textContent = a.question;
+    document.getElementById('qText').innerHTML = marked.parse(a.question);
     document.getElementById('qUserAnswer').textContent = a.user_answer;
-    document.getElementById('qRefAnswer').textContent = a.reference_answer;
+    document.getElementById('qRefAnswer').innerHTML = marked.parse(a.reference_answer);
 
     // 分数
     const scoreEl = document.getElementById('qScore');
@@ -362,10 +362,10 @@ function appendMessage(role, text) {
         wrapper.innerHTML = `<div class="msg-user"><div class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">${escapeHtml(text)}</div></div>`;
     } else if (role === 'passed') {
         wrapper.className = 'flex justify-start';
-        wrapper.innerHTML = `<div class="msg-passed"><div class="flex items-center gap-2 mb-1"><svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span class="text-xs font-bold text-green-700">通过</span></div><div class="text-sm text-green-800 leading-relaxed whitespace-pre-wrap">${escapeHtml(text)}</div></div>`;
+        wrapper.innerHTML = `<div class="msg-passed"><div class="flex items-center gap-2 mb-1"><svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span class="text-xs font-bold text-green-700">通过</span></div><div class="text-sm text-green-800 leading-relaxed markdown-body">${marked.parse(text)}</div></div>`;
     } else {
         wrapper.className = 'flex justify-start';
-        wrapper.innerHTML = `<div><div class="text-xs text-primary font-medium mb-1">AI 导师</div><div class="msg-ai"><div class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">${escapeHtml(text)}</div></div></div>`;
+        wrapper.innerHTML = `<div><div class="text-xs text-primary font-medium mb-1">AI 导师</div><div class="msg-ai"><div class="text-sm text-gray-700 leading-relaxed markdown-body">${marked.parse(text)}</div></div></div>`;
     }
 
     container.appendChild(wrapper);
