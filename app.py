@@ -130,12 +130,14 @@ async def learn_page(request: Request, session_id: int, user_id: int):
                 "feedback": ans.get("ai_feedback", ""),
                 "concept_gaps": ans.get("concept_gaps", []),
             })
+    learned_ids = db.get_learned_question_ids(session_id)
     return templates.TemplateResponse("learn.html", {
         "request": request,
         "session": session,
         "session_id": session_id,
         "user_id": user_id,
         "answers_json": enriched,
+        "learned_ids": learned_ids,
     })
 
 
@@ -320,6 +322,21 @@ async def learn_evaluate(request: Request):
     )
 
     return result
+
+
+@app.post("/api/learn/mark-learned")
+async def mark_learned(request: Request):
+    """标记某道错题已在学习模式中通过"""
+    body = await request.json()
+    session_id = body.get("session_id")
+    question_id = body.get("question_id")
+
+    if not session_id or not question_id:
+        return {"status": "error", "message": "缺少参数"}
+
+    db.mark_answer_learned(session_id, question_id)
+    all_done = db.check_learning_completion(session_id)
+    return {"ok": True, "all_done": all_done}
 
 
 if __name__ == "__main__":

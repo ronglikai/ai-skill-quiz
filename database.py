@@ -67,6 +67,18 @@ def init_db():
         );
     """)
     conn.commit()
+
+    # Schema 迁移：新增学习进度字段
+    for stmt in [
+        "ALTER TABLE answers ADD COLUMN learned INTEGER DEFAULT 0",
+        "ALTER TABLE test_sessions ADD COLUMN learning_completed_at TEXT",
+    ]:
+        try:
+            conn.execute(stmt)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # 列已存在，忽略
+
     conn.close()
 
 
@@ -239,6 +251,50 @@ def get_comprehensive(session_id: int):
 
 # ==================== 记录查询 ====================
 
+def mark_answer_learned(session_id: int, question_id: int):
+    conn = get_db()
+    conn.execute(
+        "UPDATE answers SET learned = 1 WHERE session_id = ? AND question_id = ?",
+        (session_id, question_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def check_learning_completion(session_id: int) -> bool:
+    """检查该 session 中所有错题是否都已学习通过，如果是则标记完成时间"""
+    conn = get_db()
+    cursor = conn.execute(
+        """SELECT COUNT(*) as wrong_total,
+                  SUM(CASE WHEN learned = 1 THEN 1 ELSE 0 END) as learned_count
+           FROM answers WHERE session_id = ? AND is_correct = 0""",
+        (session_id,),
+    )
+    row = cursor.fetchone()
+    wrong_total = row["wrong_total"] or 0
+    learned_count = row["learned_count"] or 0
+    all_done = wrong_total > 0 and learned_count == wrong_total
+    if all_done:
+        conn.execute(
+            "UPDATE test_sessions SET learning_completed_at = datetime('now', 'localtime') WHERE id = ? AND learning_completed_at IS NULL",
+            (session_id,),
+        )
+        conn.commit()
+    conn.close()
+    return all_done
+
+
+def get_learned_question_ids(session_id: int) -> list:
+    conn = get_db()
+    cursor = conn.execute(
+        "SELECT question_id FROM answers WHERE session_id = ? AND learned = 1",
+        (session_id,),
+    )
+    ids = [r["question_id"] for r in cursor.fetchall()]
+    conn.close()
+    return ids
+
+
 def get_all_records() -> list:
     conn = get_db()
     cursor = conn.execute(
@@ -246,9 +302,28 @@ def get_all_records() -> list:
                   COUNT(ts.id) as total_sessions,
                   COALESCE(SUM(ts.correct_count), 0) as total_correct,
                   COALESCE(SUM(ts.total_questions), 0) as total_questions,
-                  MAX(ts.started_at) as last_test_at
+                  MAX(ts.started_at) as last_test_at,
+                  latest.wrong_count,
+                  latest.learned_count,
+                  latest.learning_completed_at
            FROM users u
            LEFT JOIN test_sessions ts ON u.id = ts.user_id
+           LEFT JOIN (
+               SELECT ts2.user_id,
+                      ts2.learning_completed_at,
+                      COALESCE(a_stats.wrong_count, 0) as wrong_count,
+                      COALESCE(a_stats.learned_count, 0) as learned_count
+               FROM test_sessions ts2
+               INNER JOIN (
+                   SELECT user_id, MAX(id) as max_id FROM test_sessions GROUP BY user_id
+               ) latest_ts ON ts2.id = latest_ts.max_id
+               LEFT JOIN (
+                   SELECT session_id,
+                          SUM(CASE WHEN is_correct = 0 THEN 1 ELSE 0 END) as wrong_count,
+                          SUM(CASE WHEN learned = 1 THEN 1 ELSE 0 END) as learned_count
+                   FROM answers GROUP BY session_id
+               ) a_stats ON a_stats.session_id = ts2.id
+           ) latest ON latest.user_id = u.id
            GROUP BY u.id, u.name
            ORDER BY last_test_at DESC""",
     )
@@ -275,7 +350,17 @@ def get_user_detail_records(user_id: int) -> dict:
     user = dict(row) if row else None
 
     cursor = conn.execute(
-        "SELECT * FROM test_sessions WHERE user_id = ? ORDER BY started_at DESC",
+        """SELECT ts.*,
+                  COALESCE(a_stats.wrong_count, 0) as wrong_count,
+                  COALESCE(a_stats.learned_count, 0) as learned_count
+           FROM test_sessions ts
+           LEFT JOIN (
+               SELECT session_id,
+                      SUM(CASE WHEN is_correct = 0 THEN 1 ELSE 0 END) as wrong_count,
+                      SUM(CASE WHEN learned = 1 THEN 1 ELSE 0 END) as learned_count
+               FROM answers GROUP BY session_id
+           ) a_stats ON a_stats.session_id = ts.id
+           WHERE ts.user_id = ? ORDER BY ts.started_at DESC""",
         (user_id,),
     )
     sessions = [dict(r) for r in cursor.fetchall()]

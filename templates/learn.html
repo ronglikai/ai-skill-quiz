@@ -118,8 +118,10 @@
 </style>
 <script>
 const ANSWERS = {{ answers_json | tojson }};
+const SESSION_ID = {{ session_id }};
+const LEARNED_IDS = new Set({{ learned_ids | tojson }});
 let currentIndex = 0;
-let passedSet = new Set();
+let passedSet = new Set(LEARNED_IDS);
 let chatHistory = [];
 let followupQuestion = '';
 let sending = false;
@@ -127,8 +129,12 @@ let questionPassed = false;
 
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('totalCount').textContent = ANSWERS.length;
+    document.getElementById('passedCount').textContent = passedSet.size > 0 ? `已通过 ${passedSet.size} 题` : '';
     if (ANSWERS.length > 0) {
-        loadQuestion(0);
+        // 找到第一个未通过的题
+        let startIdx = ANSWERS.findIndex(a => !passedSet.has(a.question_id));
+        if (startIdx === -1) startIdx = 0;
+        loadQuestion(startIdx);
     }
 });
 
@@ -182,6 +188,19 @@ function loadQuestion(idx) {
 
     // 关闭参考答案折叠
     document.querySelector('details').removeAttribute('open');
+
+    // 如果该题已在之前的学习中通过，直接显示已通过状态
+    if (passedSet.has(a.question_id)) {
+        questionPassed = true;
+        document.getElementById('aiLoading')?.remove();
+        const msgContainer = document.getElementById('chatMessages');
+        msgContainer.innerHTML = '';
+        appendMessage('passed', '你已在之前的学习中通过了这道题。');
+        document.getElementById('chatInput').disabled = true;
+        document.getElementById('sendBtn').disabled = true;
+        showNavButtons();
+        return;
+    }
 
     // 调用AI初始化分析
     initLearning(a);
@@ -275,6 +294,16 @@ async function sendReply() {
             passedSet.add(a.question_id);
             appendMessage('passed', data.reply);
             chatHistory.push({ role: 'assistant', content: data.reply });
+
+            // 持久化到数据库
+            fetch('/api/learn/mark-learned', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: SESSION_ID, question_id: a.question_id }),
+            }).catch(() => {});
+
+            // 更新通过计数
+            document.getElementById('passedCount').textContent = `已通过 ${passedSet.size} 题`;
 
             // 显示导航按钮
             showNavButtons();

@@ -29,6 +29,7 @@
                         <th class="text-center py-3 px-4 text-gray-500 font-medium">累计题数</th>
                         <th class="text-center py-3 px-4 text-gray-500 font-medium">正确率</th>
                         <th class="text-center py-3 px-4 text-gray-500 font-medium">最近测试</th>
+                        <th class="text-center py-3 px-4 text-gray-500 font-medium">学习进度</th>
                         <th class="text-right py-3 px-4 text-gray-500 font-medium">操作</th>
                     </tr>
                 </thead>
@@ -52,6 +53,19 @@
                             {% endif %}
                         </td>
                         <td class="py-3 px-4 text-center text-gray-500 text-xs">{{ r.last_test_at or '-' }}</td>
+                        <td class="py-3 px-4 text-center">
+                            {% if r.total_sessions == 0 %}
+                            <span class="text-gray-400 text-xs">-</span>
+                            {% elif r.wrong_count == 0 %}
+                            <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">全对</span>
+                            {% elif r.learning_completed_at %}
+                            <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">已完成</span>
+                            {% elif r.learned_count and r.learned_count > 0 %}
+                            <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">学习中 ({{ r.learned_count }}/{{ r.wrong_count }})</span>
+                            {% else %}
+                            <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">未开始</span>
+                            {% endif %}
+                        </td>
                         <td class="py-3 px-4 text-right">
                             <a href="/records?user_id={{ r.user_id }}" class="text-primary hover:text-primary-dark text-xs font-medium">详情</a>
                         </td>
@@ -106,8 +120,17 @@
             <a href="/session/{{ s.id }}/detail?user_id={{ current_user_id }}" class="flex items-center justify-between p-4 rounded-xl bg-gray-50 hover:bg-primary-50 transition group">
                 <div>
                     <div class="text-sm font-medium text-gray-800">{{ s.started_at }}</div>
-                    <div class="text-xs text-gray-400 mt-1">
+                    <div class="text-xs text-gray-400 mt-1 flex items-center gap-2">
                         {% if s.completed_at %}已完成{% else %}进行中{% endif %}
+                        {% if s.wrong_count == 0 %}
+                        <span class="inline-block px-1.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">全对</span>
+                        {% elif s.learning_completed_at %}
+                        <span class="inline-block px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">学习已完成</span>
+                        {% elif s.learned_count and s.learned_count > 0 %}
+                        <span class="inline-block px-1.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">学习中 ({{ s.learned_count }}/{{ s.wrong_count }})</span>
+                        {% elif s.wrong_count and s.wrong_count > 0 %}
+                        <span class="inline-block px-1.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">未学习</span>
+                        {% endif %}
                     </div>
                 </div>
                 <div class="flex items-center gap-3">
