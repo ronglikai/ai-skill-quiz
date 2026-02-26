@@ -2,12 +2,15 @@
 数据库操作模块 - SQLite
 """
 
+import os
 import sqlite3
 import json
 from datetime import datetime
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "data" / "quiz.db"
+# 支持通过环境变量指定数据库路径（Render持久化磁盘等场景）
+_db_dir = os.environ.get("DATA_DIR", str(Path(__file__).parent / "data"))
+DB_PATH = Path(_db_dir) / "quiz.db"
 
 
 def get_db():

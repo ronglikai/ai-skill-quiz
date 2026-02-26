@@ -3,11 +3,12 @@ AI评估服务 - 使用Kimi k2.5模型评估用户回答
 """
 
 import json
+import os
 import httpx
 
-KIMI_API_KEY = "sk-P8kJiGgSU32op9pfbBWUhFt7Q20TCjU7y3tUWoYIT2IDOZwz"
-KIMI_BASE_URL = "https://api.moonshot.cn/v1"
-KIMI_MODEL = "kimi-latest"
+KIMI_API_KEY = os.environ.get("KIMI_API_KEY", "sk-P8kJiGgSU32op9pfbBWUhFt7Q20TCjU7y3tUWoYIT2IDOZwz")
+KIMI_BASE_URL = os.environ.get("KIMI_BASE_URL", "https://api.moonshot.cn/v1")
+KIMI_MODEL = os.environ.get("KIMI_MODEL", "kimi-latest")
 
 
 async def evaluate_answer(question: str, key_points: list, reference_answer: str, user_answer: str) -> dict:
@@ -55,9 +56,11 @@ async def evaluate_answer(question: str, key_points: list, reference_answer: str
 请根据核心知识点评估用户回答的准确性和完整性，返回JSON格式的评估结果。"""
 
     try:
-        # 显式使用HTTP代理（避免SOCKS代理问题）
-        import os
-        proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy") or None
+        # 使用HTTP代理（如果有的话，跳过SOCKS代理）
+        http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+        socks_proxy = os.environ.get("ALL_PROXY") or os.environ.get("all_proxy")
+        # 仅在有HTTP代理且非SOCKS时使用，否则不走代理
+        proxy = http_proxy if (http_proxy and not http_proxy.startswith("socks")) else None
         async with httpx.AsyncClient(timeout=60.0, proxy=proxy) as client:
             response = await client.post(
                 f"{KIMI_BASE_URL}/chat/completions",
