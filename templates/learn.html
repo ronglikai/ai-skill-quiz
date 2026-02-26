@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}对话学习 - AI Skill 知识测试系统{% endblock %}
+
+{% block nav_links %}
+<a href="/results?session_id={{ session_id }}&user_id={{ user_id }}" class="text-gray-600 hover:text-primary transition">查看报告</a>
+<span class="text-gray-400">|</span>
+<a href="/dashboard?user_id={{ user_id }}" class="text-gray-600 hover:text-primary transition">仪表盘</a>
+<span class="text-gray-400">|</span>
+<span class="text-gray-600">{{ session.user_name }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto flex flex-col" style="height: calc(100vh - 120px);">
+    <!-- 头部 -->
+    <div class="bg-white rounded-t-2xl shadow-sm border border-gray-100 border-b-0 px-6 py-4">
+        <h1 class="text-lg font-bold text-gray-800">对话学习</h1>
+        <p class="text-xs text-gray-400 mt-0.5">AI导师会根据你的测试表现，用对话引导你理解薄弱概念</p>
+    </div>
+
+    <!-- 消息区 -->
+    <div id="chatMessages" class="flex-1 overflow-y-auto bg-gray-50 border-x border-gray-100 px-6 py-4 space-y-4">
+        <!-- 消息会在这里动态插入 -->
+    </div>
+
+    <!-- 输入区 -->
+    <div class="bg-white rounded-b-2xl shadow-sm border border-gray-100 border-t-0 px-6 py-4">
+        <div class="flex gap-3">
+            <textarea id="chatInput" rows="2" placeholder="输入你的想法或问题..."
+                class="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition resize-none text-sm"></textarea>
+            <button onclick="sendMessage()" id="sendBtn"
+                class="bg-primary hover:bg-primary-dark text-white font-medium px-6 rounded-xl transition self-end flex items-center gap-2">
+                <span>发送</span>
+                <svg class="w-4 h-4 hidden" id="sendSpinner" viewBox="0 0 24 24" fill="none">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </button>
+        </div>
+        <div class="text-xs text-gray-400 mt-2">Enter 发送 / Shift+Enter 换行</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+.msg-ai { background: white; border: 1px solid #e5e7eb; }
+.msg-user { background: #E6F9F7; border: 1px solid #B3EDE8; }
+.msg-ai, .msg-user { border-radius: 1rem; padding: 0.75rem 1rem; max-width: 85%; word-wrap: break-word; }
+#sendSpinner { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+</style>
+<script>
+const SID = {{ session_id }};
+let history = []; // {role, content}
+let sending = false;
+
+document.addEventListener('DOMContentLoaded', () => {
+    // 发起首次对话（AI先发言）
+    sendToAI('你好，我刚完成了AI Skill知识测试，请帮我开始学习。', true);
+});
+
+function appendMessage(role, text) {
+    const container = document.getElementById('chatMessages');
+    const wrapper = document.createElement('div');
+    wrapper.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+
+    const bubble = document.createElement('div');
+    bubble.className = role === 'user' ? 'msg-user' : 'msg-ai';
+    bubble.innerHTML = `<div class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">${escapeHtml(text)}</div>`;
+
+    if (role === 'assistant') {
+        const label = document.createElement('div');
+        label.className = 'text-xs text-primary font-medium mb-1';
+        label.textContent = 'AI 导师';
+        wrapper.appendChild(document.createElement('div'));
+        wrapper.firstChild.appendChild(label);
+        wrapper.firstChild.appendChild(bubble);
+    } else {
+        wrapper.appendChild(bubble);
+    }
+
+    container.appendChild(wrapper);
+    container.scrollTop = container.scrollHeight;
+}
+
+async function sendToAI(userMsg, isInit = false) {
+    if (!isInit) {
+        appendMessage('user', userMsg);
+        history.push({ role: 'user', content: userMsg });
+    }
+
+    // 显示打字指示器
+    const typing = document.createElement('div');
+    typing.className = 'flex justify-start';
+    typing.id = 'typing';
+    typing.innerHTML = '<div class="msg-ai"><div class="flex gap-1"><span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span><span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay:0.1s"></span><span class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay:0.2s"></span></div></div>';
+    document.getElementById('chatMessages').appendChild(typing);
+
+    try {
+        const resp = await fetch(`/api/session/${SID}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: userMsg,
+                history: isInit ? [] : history.slice(0, -1), // 不含刚加的user消息
+            }),
+        });
+        const data = await resp.json();
+
+        document.getElementById('typing')?.remove();
+        appendMessage('assistant', data.reply);
+        history.push({ role: 'assistant', content: data.reply });
+    } catch (e) {
+        document.getElementById('typing')?.remove();
+        appendMessage('assistant', '抱歉，网络出了点问题，请重试。');
+    }
+}
+
+async function sendMessage() {
+    if (sending) return;
+    const input = document.getElementById('chatInput');
+    const msg = input.value.trim();
+    if (!msg) return;
+
+    sending = true;
+    input.value = '';
+    document.getElementById('sendSpinner').classList.remove('hidden');
+
+    await sendToAI(msg);
+
+    sending = false;
+    document.getElementById('sendSpinner').classList.add('hidden');
+    input.focus();
+}
+
+function escapeHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+}
+
+document.getElementById('chatInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+});
+</script>
+{% endblock %}

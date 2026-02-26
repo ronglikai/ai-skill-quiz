@@ -3,8 +3,10 @@ AI Skill 知识测试与学习系统
 团队内部使用 - 主应用
 """
 
-from fastapi import FastAPI, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+import os
+import asyncio
+from fastapi import FastAPI, Request, Form, BackgroundTasks
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
@@ -19,21 +21,38 @@ BASE_DIR = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
-# 初始化数据库
 db.init_db()
+
+
+# ==================== 后台评估任务 ====================
+
+async def _bg_evaluate(answer_id: int, question: str, key_points: list, reference_answer: str, user_answer: str):
+    """后台评估单题"""
+    result = await ai_service.evaluate_answer(question, key_points, reference_answer, user_answer)
+    db.update_answer_eval(
+        answer_id=answer_id,
+        score=result["score"],
+        is_correct=result["is_correct"],
+        feedback=result["feedback"],
+        concept_gaps=result.get("concept_gaps", []),
+    )
+
+
+def _run_bg_eval(answer_id, question, key_points, reference_answer, user_answer):
+    """在事件循环中运行后台评估"""
+    loop = asyncio.get_event_loop()
+    loop.create_task(_bg_evaluate(answer_id, question, key_points, reference_answer, user_answer))
 
 
 # ==================== 页面路由 ====================
 
 @app.get("/", response_class=HTMLResponse)
 async def login_page(request: Request):
-    """登录页"""
     return templates.TemplateResponse("login.html", {"request": request})
 
 
 @app.post("/login")
 async def login(name: str = Form(...)):
-    """处理登录"""
     name = name.strip()
     if not name:
         return RedirectResponse("/", status_code=303)
@@ -43,61 +62,69 @@ async def login(name: str = Form(...)):
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request, user_id: int):
-    """仪表盘页面"""
     conn = db.get_db()
     cursor = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))
     user = cursor.fetchone()
     conn.close()
     if not user:
         return RedirectResponse("/", status_code=303)
-
     sessions = db.get_user_sessions(user_id)
-    total_questions = qbank.get_total_count()
-
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "user": dict(user),
         "sessions": sessions,
-        "total_questions": total_questions,
+        "total_questions": qbank.get_total_count(),
     })
 
 
 @app.get("/test", response_class=HTMLResponse)
-async def test_page(request: Request, user_id: int, session_id: int = None):
-    """测试页面"""
+async def test_page(request: Request, user_id: int):
     conn = db.get_db()
     cursor = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))
     user = cursor.fetchone()
     conn.close()
     if not user:
         return RedirectResponse("/", status_code=303)
-
-    # 创建新session或继续已有session
-    if not session_id:
-        session_id = db.create_session(user_id, qbank.get_total_count())
-
-    all_questions = qbank.get_all_questions()
-    categories = qbank.get_categories()
-
+    session_id = db.create_session(user_id, qbank.get_total_count())
     return templates.TemplateResponse("test.html", {
         "request": request,
         "user": dict(user),
         "session_id": session_id,
-        "questions": all_questions,
-        "categories": categories,
+        "questions": qbank.get_all_questions(),
         "total_questions": qbank.get_total_count(),
+    })
+
+
+@app.get("/results", response_class=HTMLResponse)
+async def results_page(request: Request, session_id: int, user_id: int):
+    session = db.get_session(session_id)
+    if not session:
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse("results.html", {
+        "request": request,
+        "session": session,
+        "session_id": session_id,
+        "user_id": user_id,
+    })
+
+
+@app.get("/learn", response_class=HTMLResponse)
+async def learn_page(request: Request, session_id: int, user_id: int):
+    session = db.get_session(session_id)
+    if not session:
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse("learn.html", {
+        "request": request,
+        "session": session,
+        "session_id": session_id,
+        "user_id": user_id,
     })
 
 
 @app.get("/records", response_class=HTMLResponse)
 async def records_page(request: Request, user_id: int = None):
-    """记录管理页面"""
     all_records = db.get_all_records()
-    # 如果指定了user_id，获取该用户的详细记录
-    user_detail = None
-    if user_id:
-        user_detail = db.get_user_detail_records(user_id)
-
+    user_detail = db.get_user_detail_records(user_id) if user_id else None
     return templates.TemplateResponse("records.html", {
         "request": request,
         "all_records": all_records,
@@ -108,134 +135,155 @@ async def records_page(request: Request, user_id: int = None):
 
 @app.get("/session/{session_id}/detail", response_class=HTMLResponse)
 async def session_detail_page(request: Request, session_id: int, user_id: int = None):
-    """某次测试的详细记录"""
     answers = db.get_session_answers(session_id)
-
-    # 获取session信息
-    conn = db.get_db()
-    cursor = conn.execute(
-        """SELECT ts.*, u.name as user_name FROM test_sessions ts
-           JOIN users u ON ts.user_id = u.id WHERE ts.id = ?""",
-        (session_id,),
-    )
-    session = cursor.fetchone()
-    conn.close()
+    session = db.get_session(session_id)
     if not session:
         return RedirectResponse("/records", status_code=303)
-
-    # 为每个answer附加题目信息
-    enriched_answers = []
+    enriched = []
     for ans in answers:
         q = qbank.get_question_by_id(ans["question_id"])
-        enriched_answers.append({**ans, "question_text": q["question"] if q else "未知题目", "category": q["category"] if q else ""})
-
+        enriched.append({**ans, "question_text": q["question"] if q else "未知", "category": q["category"] if q else ""})
+    comp = db.get_comprehensive(session_id)
     return templates.TemplateResponse("session_detail.html", {
         "request": request,
-        "session": dict(session),
-        "answers": enriched_answers,
+        "session": session,
+        "answers": enriched,
+        "comprehensive": comp,
         "current_user_id": user_id,
     })
 
 
 # ==================== API 路由 ====================
 
-@app.get("/api/question/{question_id}")
-async def get_question(question_id: int):
-    """获取题目（不含答案）"""
-    q = qbank.get_question_by_id(question_id)
-    if not q:
-        raise HTTPException(status_code=404, detail="题目不存在")
-    return {
-        "id": q["id"],
-        "category": q["category"],
-        "difficulty": q["difficulty"],
-        "question": q["question"],
-    }
-
-
-@app.post("/api/submit")
-async def submit_answer(request: Request):
-    """提交答案并获取AI评估"""
+@app.post("/api/submit-quick")
+async def submit_quick(request: Request):
+    """快速保存答案，立即返回，后台异步评估"""
     body = await request.json()
     session_id = body.get("session_id")
     question_id = body.get("question_id")
     user_answer = body.get("answer", "").strip()
 
     if not all([session_id, question_id, user_answer]):
-        raise HTTPException(status_code=400, detail="缺少必要参数")
+        return {"status": "error", "message": "缺少参数"}
 
-    # 获取题目
     q = qbank.get_question_by_id(question_id)
     if not q:
-        raise HTTPException(status_code=404, detail="题目不存在")
+        return {"status": "error", "message": "题目不存在"}
 
-    # 检查是否已经答对
-    if db.has_correct_answer(session_id, question_id):
-        return {"status": "already_correct", "message": "你已经答对了这道题！"}
+    # 1. 快速保存
+    answer_id = db.save_answer_quick(session_id, question_id, user_answer)
 
-    # 获取尝试次数
-    attempt = db.get_question_attempt_count(session_id, question_id) + 1
-
-    # 调用AI评估
-    result = await ai_service.evaluate_answer(
-        question=q["question"],
-        key_points=q["key_points"],
-        reference_answer=q["reference_answer"],
-        user_answer=user_answer,
+    # 2. 后台异步评估（不阻塞响应）
+    asyncio.get_event_loop().create_task(
+        _bg_evaluate(answer_id, q["question"], q["key_points"], q["reference_answer"], user_answer)
     )
 
-    # 保存答题记录
-    db.save_answer(
-        session_id=session_id,
-        question_id=question_id,
-        user_answer=user_answer,
-        score=result["score"],
-        is_correct=result["is_correct"],
-        ai_feedback=result["feedback"],
-        knowledge_gaps=result["knowledge_gaps"],
-        guidance=result["guidance"],
-        attempt_number=attempt,
-    )
+    return {"status": "ok", "answer_id": answer_id}
 
+
+@app.get("/api/session/{session_id}/eval-status")
+async def eval_status(session_id: int):
+    """查询评估进度"""
+    status = db.get_session_eval_status(session_id)
     return {
-        "status": "ok",
-        "result": result,
-        "attempt": attempt,
+        "total": status["total"],
+        "done": status["done"],
+        "all_done": status["total"] > 0 and status["done"] == status["total"],
     }
 
 
-@app.post("/api/complete-session")
-async def complete_session(request: Request):
-    """完成测试session"""
-    body = await request.json()
-    session_id = body.get("session_id")
-    if session_id:
-        db.complete_session(session_id)
-    return {"status": "ok"}
+@app.post("/api/session/{session_id}/comprehensive")
+async def generate_comprehensive(session_id: int):
+    """生成综合分析"""
+    # 检查是否已有分析
+    existing = db.get_comprehensive(session_id)
+    if existing:
+        return {"status": "ok", "data": existing}
 
-
-@app.get("/api/session/{session_id}/progress")
-async def get_session_progress(session_id: int):
-    """获取session答题进度"""
+    # 收集所有答题数据
     answers = db.get_session_answers(session_id)
-    # 按question_id分组，取最高分
-    progress = {}
+    qa_list = []
     for ans in answers:
-        qid = ans["question_id"]
-        if qid not in progress or ans["score"] > progress[qid]["score"]:
-            progress[qid] = {
-                "question_id": qid,
-                "score": ans["score"],
-                "is_correct": ans["is_correct"],
-                "attempts": 0,
-            }
-        progress[qid]["attempts"] += 1
+        q = qbank.get_question_by_id(ans["question_id"])
+        if q:
+            qa_list.append({
+                "question": q["question"],
+                "category": q["category"],
+                "user_answer": ans["user_answer"],
+                "score": ans.get("score", 0) or 0,
+                "feedback": ans.get("ai_feedback", ""),
+                "concept_gaps": ans.get("concept_gaps", []),
+            })
 
-    return {"progress": list(progress.values())}
+    # 调用综合分析
+    result = await ai_service.comprehensive_analysis(qa_list)
+
+    # 更新session分数
+    db.complete_session(session_id)
+    db.update_session_score(session_id)
+
+    # 保存综合分析
+    db.save_comprehensive(session_id, result)
+
+    return {"status": "ok", "data": result}
+
+
+@app.get("/api/session/{session_id}/comprehensive")
+async def get_comprehensive(session_id: int):
+    """获取综合分析"""
+    data = db.get_comprehensive(session_id)
+    if data:
+        return {"status": "ok", "data": data}
+    return {"status": "not_ready"}
+
+
+@app.get("/api/session/{session_id}/answers")
+async def get_answers(session_id: int):
+    """获取答题详情"""
+    answers = db.get_session_answers(session_id)
+    enriched = []
+    for ans in answers:
+        q = qbank.get_question_by_id(ans["question_id"])
+        enriched.append({
+            "question_id": ans["question_id"],
+            "question": q["question"] if q else "",
+            "category": q["category"] if q else "",
+            "user_answer": ans["user_answer"],
+            "score": ans.get("score"),
+            "is_correct": ans.get("is_correct"),
+            "feedback": ans.get("ai_feedback", ""),
+            "concept_gaps": ans.get("concept_gaps", []),
+        })
+    return {"answers": enriched}
+
+
+@app.post("/api/session/{session_id}/chat")
+async def chat(session_id: int, request: Request):
+    """对话式学习"""
+    body = await request.json()
+    user_message = body.get("message", "").strip()
+    chat_history = body.get("history", [])
+
+    if not user_message:
+        return {"reply": "请输入你的问题或想法。"}
+
+    # 获取综合分析数据
+    comp = db.get_comprehensive(session_id)
+    session = db.get_session(session_id)
+
+    reply = await ai_service.chat_response(
+        user_name=session["user_name"] if session else "同学",
+        weak_areas=comp.get("weak_areas", []) if comp else [],
+        strong_areas=comp.get("strong_areas", []) if comp else [],
+        summary=comp.get("summary", "") if comp else "",
+        chat_history=chat_history,
+        user_message=user_message,
+    )
+
+    return {"reply": reply}
 
 
 if __name__ == "__main__":
-    import os
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)

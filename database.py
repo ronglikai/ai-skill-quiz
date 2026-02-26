@@ -5,16 +5,13 @@
 import os
 import sqlite3
 import json
-from datetime import datetime
 from pathlib import Path
 
-# 支持通过环境变量指定数据库路径（Render持久化磁盘等场景）
 _db_dir = os.environ.get("DATA_DIR", str(Path(__file__).parent / "data"))
 DB_PATH = Path(_db_dir) / "quiz.db"
 
 
 def get_db():
-    """获取数据库连接"""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
@@ -23,7 +20,6 @@ def get_db():
 
 
 def init_db():
-    """初始化数据库表"""
     conn = get_db()
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS users (
@@ -47,12 +43,25 @@ def init_db():
             session_id INTEGER NOT NULL,
             question_id INTEGER NOT NULL,
             user_answer TEXT NOT NULL,
-            score INTEGER NOT NULL DEFAULT 0,
-            is_correct INTEGER NOT NULL DEFAULT 0,
+            eval_status TEXT NOT NULL DEFAULT 'pending',
+            score INTEGER,
+            is_correct INTEGER,
             ai_feedback TEXT,
-            knowledge_gaps TEXT,
-            guidance TEXT,
-            attempt_number INTEGER NOT NULL DEFAULT 1,
+            concept_gaps TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+            FOREIGN KEY (session_id) REFERENCES test_sessions(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS comprehensive_analyses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER UNIQUE NOT NULL,
+            overall_score INTEGER,
+            level TEXT,
+            summary TEXT,
+            strong_areas TEXT,
+            weak_areas TEXT,
+            patterns TEXT,
+            learning_path TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
             FOREIGN KEY (session_id) REFERENCES test_sessions(id)
         );
@@ -61,8 +70,9 @@ def init_db():
     conn.close()
 
 
+# ==================== 用户 ====================
+
 def get_or_create_user(name: str) -> dict:
-    """获取或创建用户"""
     conn = get_db()
     cursor = conn.execute("SELECT * FROM users WHERE name = ?", (name,))
     user = cursor.fetchone()
@@ -76,8 +86,9 @@ def get_or_create_user(name: str) -> dict:
     return result
 
 
+# ==================== 会话 ====================
+
 def create_session(user_id: int, total_questions: int) -> int:
-    """创建测试会话，返回session_id"""
     conn = get_db()
     cursor = conn.execute(
         "INSERT INTO test_sessions (user_id, total_questions) VALUES (?, ?)",
@@ -89,26 +100,7 @@ def create_session(user_id: int, total_questions: int) -> int:
     return session_id
 
 
-def save_answer(session_id: int, question_id: int, user_answer: str, score: int, is_correct: bool, ai_feedback: str, knowledge_gaps: list, guidance: str, attempt_number: int):
-    """保存用户的答题记录"""
-    conn = get_db()
-    conn.execute(
-        """INSERT INTO answers (session_id, question_id, user_answer, score, is_correct, ai_feedback, knowledge_gaps, guidance, attempt_number)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (session_id, question_id, user_answer, score, int(is_correct), ai_feedback, json.dumps(knowledge_gaps, ensure_ascii=False), guidance, attempt_number),
-    )
-    # 更新session的正确数
-    if is_correct:
-        conn.execute(
-            "UPDATE test_sessions SET correct_count = correct_count + 1 WHERE id = ?",
-            (session_id,),
-        )
-    conn.commit()
-    conn.close()
-
-
 def complete_session(session_id: int):
-    """完成测试会话"""
     conn = get_db()
     conn.execute(
         "UPDATE test_sessions SET completed_at = datetime('now', 'localtime') WHERE id = ?",
@@ -118,44 +110,136 @@ def complete_session(session_id: int):
     conn.close()
 
 
-def get_user_sessions(user_id: int) -> list:
-    """获取用户的所有测试记录"""
+def update_session_score(session_id: int):
+    """根据answers表重新计算正确数"""
     conn = get_db()
     cursor = conn.execute(
-        """SELECT ts.*, u.name as user_name
-           FROM test_sessions ts
-           JOIN users u ON ts.user_id = u.id
-           WHERE ts.user_id = ?
-           ORDER BY ts.started_at DESC""",
-        (user_id,),
+        "SELECT COUNT(*) as cnt FROM answers WHERE session_id = ? AND is_correct = 1",
+        (session_id,),
     )
-    rows = [dict(r) for r in cursor.fetchall()]
+    count = cursor.fetchone()["cnt"]
+    conn.execute(
+        "UPDATE test_sessions SET correct_count = ? WHERE id = ?",
+        (count, session_id),
+    )
+    conn.commit()
     conn.close()
-    return rows
+
+
+def get_session(session_id: int) -> dict:
+    conn = get_db()
+    cursor = conn.execute(
+        "SELECT ts.*, u.name as user_name FROM test_sessions ts JOIN users u ON ts.user_id = u.id WHERE ts.id = ?",
+        (session_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+# ==================== 答题（快速保存 + 后台评估更新） ====================
+
+def save_answer_quick(session_id: int, question_id: int, user_answer: str) -> int:
+    """快速保存答案，不等评估，返回answer_id"""
+    conn = get_db()
+    cursor = conn.execute(
+        "INSERT INTO answers (session_id, question_id, user_answer, eval_status) VALUES (?, ?, ?, 'pending')",
+        (session_id, question_id, user_answer),
+    )
+    conn.commit()
+    answer_id = cursor.lastrowid
+    conn.close()
+    return answer_id
+
+
+def update_answer_eval(answer_id: int, score: int, is_correct: bool, feedback: str, concept_gaps: list):
+    """后台评估完成后更新"""
+    conn = get_db()
+    conn.execute(
+        """UPDATE answers SET eval_status = 'done', score = ?, is_correct = ?, ai_feedback = ?, concept_gaps = ?
+           WHERE id = ?""",
+        (score, int(is_correct), feedback, json.dumps(concept_gaps, ensure_ascii=False), answer_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_session_eval_status(session_id: int) -> dict:
+    """获取评估进度"""
+    conn = get_db()
+    cursor = conn.execute(
+        "SELECT COUNT(*) as total, SUM(CASE WHEN eval_status = 'done' THEN 1 ELSE 0 END) as done FROM answers WHERE session_id = ?",
+        (session_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return {"total": row["total"] or 0, "done": row["done"] or 0}
 
 
 def get_session_answers(session_id: int) -> list:
-    """获取某次测试的所有答题记录"""
     conn = get_db()
     cursor = conn.execute(
-        """SELECT * FROM answers
-           WHERE session_id = ?
-           ORDER BY question_id, attempt_number""",
+        "SELECT * FROM answers WHERE session_id = ? ORDER BY question_id",
         (session_id,),
     )
     rows = [dict(r) for r in cursor.fetchall()]
     for row in rows:
-        if row.get("knowledge_gaps"):
+        if row.get("concept_gaps"):
             try:
-                row["knowledge_gaps"] = json.loads(row["knowledge_gaps"])
+                row["concept_gaps"] = json.loads(row["concept_gaps"])
             except (json.JSONDecodeError, TypeError):
-                row["knowledge_gaps"] = []
+                row["concept_gaps"] = []
+        else:
+            row["concept_gaps"] = []
     conn.close()
     return rows
 
 
+# ==================== 综合分析 ====================
+
+def save_comprehensive(session_id: int, data: dict):
+    conn = get_db()
+    conn.execute(
+        """INSERT OR REPLACE INTO comprehensive_analyses
+           (session_id, overall_score, level, summary, strong_areas, weak_areas, patterns, learning_path)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            session_id,
+            data.get("overall_score", 0),
+            data.get("level", ""),
+            data.get("summary", ""),
+            json.dumps(data.get("strong_areas", []), ensure_ascii=False),
+            json.dumps(data.get("weak_areas", []), ensure_ascii=False),
+            json.dumps(data.get("patterns", []), ensure_ascii=False),
+            json.dumps(data.get("learning_path", []), ensure_ascii=False),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_comprehensive(session_id: int):
+    conn = get_db()
+    cursor = conn.execute("SELECT * FROM comprehensive_analyses WHERE session_id = ?", (session_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    d = dict(row)
+    for key in ("strong_areas", "weak_areas", "patterns", "learning_path"):
+        if d.get(key):
+            try:
+                d[key] = json.loads(d[key])
+            except (json.JSONDecodeError, TypeError):
+                d[key] = []
+        else:
+            d[key] = []
+    return d
+
+
+# ==================== 记录查询 ====================
+
 def get_all_records() -> list:
-    """获取所有用户的测试概况"""
     conn = get_db()
     cursor = conn.execute(
         """SELECT u.id as user_id, u.name,
@@ -173,65 +257,36 @@ def get_all_records() -> list:
     return rows
 
 
-def get_user_detail_records(user_id: int) -> dict:
-    """获取用户的详细测试历史"""
+def get_user_sessions(user_id: int) -> list:
     conn = get_db()
+    cursor = conn.execute(
+        "SELECT ts.*, u.name as user_name FROM test_sessions ts JOIN users u ON ts.user_id = u.id WHERE ts.user_id = ? ORDER BY ts.started_at DESC",
+        (user_id,),
+    )
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
 
-    # 用户信息
+
+def get_user_detail_records(user_id: int) -> dict:
+    conn = get_db()
     cursor = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))
     row = cursor.fetchone()
     user = dict(row) if row else None
 
-    # 所有session
     cursor = conn.execute(
-        """SELECT ts.*,
-                  (SELECT COUNT(DISTINCT question_id) FROM answers WHERE session_id = ts.id AND is_correct = 1) as unique_correct
-           FROM test_sessions ts
-           WHERE ts.user_id = ?
-           ORDER BY ts.started_at DESC""",
+        "SELECT * FROM test_sessions WHERE user_id = ? ORDER BY started_at DESC",
         (user_id,),
     )
     sessions = [dict(r) for r in cursor.fetchall()]
 
-    # 每道题的最佳成绩
     cursor = conn.execute(
         """SELECT a.question_id, MAX(a.score) as best_score, MAX(a.is_correct) as ever_correct,
                   COUNT(*) as total_attempts
-           FROM answers a
-           JOIN test_sessions ts ON a.session_id = ts.id
-           WHERE ts.user_id = ?
-           GROUP BY a.question_id""",
+           FROM answers a JOIN test_sessions ts ON a.session_id = ts.id
+           WHERE ts.user_id = ? GROUP BY a.question_id""",
         (user_id,),
     )
     question_stats = [dict(r) for r in cursor.fetchall()]
-
     conn.close()
-    return {
-        "user": user,
-        "sessions": sessions,
-        "question_stats": question_stats,
-    }
-
-
-def get_question_attempt_count(session_id: int, question_id: int) -> int:
-    """获取某个session中某道题的尝试次数"""
-    conn = get_db()
-    cursor = conn.execute(
-        "SELECT COUNT(*) as cnt FROM answers WHERE session_id = ? AND question_id = ?",
-        (session_id, question_id),
-    )
-    result = cursor.fetchone()
-    conn.close()
-    return result["cnt"] if result else 0
-
-
-def has_correct_answer(session_id: int, question_id: int) -> bool:
-    """检查某道题是否已经回答正确"""
-    conn = get_db()
-    cursor = conn.execute(
-        "SELECT COUNT(*) as cnt FROM answers WHERE session_id = ? AND question_id = ? AND is_correct = 1",
-        (session_id, question_id),
-    )
-    result = cursor.fetchone()
-    conn.close()
-    return result["cnt"] > 0 if result else False
+    return {"user": user, "sessions": sessions, "question_stats": question_stats}

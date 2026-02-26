@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}测试结果 - AI Skill 知识测试系统{% endblock %}
+
+{% block nav_links %}
+<a href="/dashboard?user_id={{ user_id }}" class="text-gray-600 hover:text-primary transition">仪表盘</a>
+<span class="text-gray-400">|</span>
+<a href="/records?user_id={{ user_id }}" class="text-gray-600 hover:text-primary transition">记录</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- 加载状态 -->
+    <div id="loading" class="text-center py-20">
+        <div class="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <p class="text-gray-500">正在加载分析结果...</p>
+    </div>
+
+    <!-- 结果内容（初始隐藏） -->
+    <div id="resultContent" class="hidden">
+        <!-- 总览卡 -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 mb-6">
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-800">{{ session.user_name }} 的测试报告</h1>
+                    <p class="text-gray-500 text-sm mt-1">{{ session.started_at }}</p>
+                </div>
+                <div class="text-center">
+                    <div class="text-5xl font-bold text-primary" id="overallScore">--</div>
+                    <div class="text-sm font-medium mt-1" id="levelBadge"></div>
+                </div>
+            </div>
+            <p class="text-gray-600 leading-relaxed" id="summaryText"></p>
+        </div>
+
+        <!-- 理解模式 -->
+        <div id="patternsSection" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6 hidden">
+            <h2 class="text-lg font-bold text-gray-800 mb-3">你的理解模式</h2>
+            <div class="space-y-2" id="patternsList"></div>
+        </div>
+
+        <!-- 强项 & 薄弱 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                <h2 class="text-lg font-bold text-green-700 mb-3 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    掌握良好
+                </h2>
+                <div class="space-y-3" id="strongList">
+                    <p class="text-gray-400 text-sm">加载中...</p>
+                </div>
+            </div>
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                <h2 class="text-lg font-bold text-red-600 mb-3 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                    需要加强
+                </h2>
+                <div class="space-y-3" id="weakList">
+                    <p class="text-gray-400 text-sm">加载中...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 学习路径 -->
+        <div id="pathSection" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6 hidden">
+            <h2 class="text-lg font-bold text-gray-800 mb-4">推荐学习路径</h2>
+            <div class="space-y-4" id="pathList"></div>
+        </div>
+
+        <!-- 各题得分一览 -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+            <h2 class="text-lg font-bold text-gray-800 mb-4">各题得分</h2>
+            <div class="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-10 gap-2" id="scoreGrid"></div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="flex gap-4 justify-center">
+            <a href="/learn?session_id={{ session_id }}&user_id={{ user_id }}"
+                class="bg-primary hover:bg-primary-dark text-white font-bold py-3 px-10 rounded-xl transition text-lg">
+                开始对话学习
+            </a>
+            <a href="/dashboard?user_id={{ user_id }}"
+                class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-8 rounded-xl transition">
+                返回首页
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const SID = {{ session_id }};
+
+document.addEventListener('DOMContentLoaded', loadResults);
+
+async function loadResults() {
+    try {
+        // 并行获取综合分析和答题详情
+        const [compResp, ansResp] = await Promise.all([
+            fetch(`/api/session/${SID}/comprehensive`),
+            fetch(`/api/session/${SID}/answers`),
+        ]);
+        const comp = await compResp.json();
+        const ans = await ansResp.json();
+
+        if (comp.status !== 'ok') {
+            document.getElementById('loading').innerHTML = '<p class="text-red-500">分析结果尚未生成，请稍后刷新</p>';
+            return;
+        }
+
+        renderResults(comp.data, ans.answers);
+    } catch (e) {
+        document.getElementById('loading').innerHTML = '<p class="text-red-500">加载失败，请刷新重试</p>';
+    }
+}
+
+function renderResults(comp, answers) {
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('resultContent').classList.remove('hidden');
+
+    // 总分 & 等级
+    document.getElementById('overallScore').textContent = comp.overall_score;
+    const badge = document.getElementById('levelBadge');
+    const levelColors = { '精通': 'bg-green-100 text-green-700', '良好': 'bg-blue-100 text-blue-700', '基础': 'bg-yellow-100 text-yellow-700', '需提升': 'bg-red-100 text-red-700' };
+    badge.className = `text-sm font-medium px-3 py-1 rounded-full inline-block ${levelColors[comp.level] || 'bg-gray-100 text-gray-700'}`;
+    badge.textContent = comp.level;
+
+    // 摘要
+    document.getElementById('summaryText').textContent = comp.summary;
+
+    // 理解模式
+    if (comp.patterns && comp.patterns.length) {
+        document.getElementById('patternsSection').classList.remove('hidden');
+        document.getElementById('patternsList').innerHTML = comp.patterns.map(p =>
+            `<div class="flex items-start gap-2"><span class="text-primary mt-0.5">&#9679;</span><span class="text-gray-600 text-sm">${p}</span></div>`
+        ).join('');
+    }
+
+    // 强项
+    const strongEl = document.getElementById('strongList');
+    if (comp.strong_areas && comp.strong_areas.length) {
+        strongEl.innerHTML = comp.strong_areas.map(s =>
+            `<div class="bg-green-50 rounded-lg p-3"><div class="text-sm font-medium text-green-800">${s.area}</div><div class="text-xs text-green-600 mt-1">${s.detail || s.evidence || ''}</div></div>`
+        ).join('');
+    } else {
+        strongEl.innerHTML = '<p class="text-gray-400 text-sm">暂无数据</p>';
+    }
+
+    // 薄弱
+    const weakEl = document.getElementById('weakList');
+    if (comp.weak_areas && comp.weak_areas.length) {
+        weakEl.innerHTML = comp.weak_areas.map(w =>
+            `<div class="bg-red-50 rounded-lg p-3"><div class="text-sm font-medium text-red-700">${w.area}</div><div class="text-xs text-red-600 mt-1">${w.detail}</div><div class="text-xs text-blue-600 mt-1 italic">${w.suggestion || ''}</div></div>`
+        ).join('');
+    } else {
+        weakEl.innerHTML = '<p class="text-gray-400 text-sm">暂无数据</p>';
+    }
+
+    // 学习路径
+    if (comp.learning_path && comp.learning_path.length) {
+        document.getElementById('pathSection').classList.remove('hidden');
+        document.getElementById('pathList').innerHTML = comp.learning_path.map(lp =>
+            `<div class="flex gap-4 items-start">
+                <div class="w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">${lp.step}</div>
+                <div><div class="text-sm font-medium text-gray-800">${lp.action}</div><div class="text-xs text-gray-500 mt-0.5">${lp.focus || ''}</div></div>
+            </div>`
+        ).join('');
+    }
+
+    // 各题得分
+    const grid = document.getElementById('scoreGrid');
+    grid.innerHTML = answers.map(a => {
+        const s = a.score ?? -1;
+        const bg = s >= 60 ? 'bg-green-100 text-green-700 border-green-200' :
+                   s >= 40 ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                   s >= 0 ? 'bg-red-100 text-red-600 border-red-200' : 'bg-gray-100 text-gray-400 border-gray-200';
+        return `<div class="rounded-lg border p-2 text-center ${bg}" title="${a.category}: ${a.question?.slice(0,30)}...">
+            <div class="text-xs text-gray-400">#${a.question_id}</div>
+            <div class="text-lg font-bold">${s >= 0 ? s : '-'}</div>
+        </div>`;
+    }).join('');
+}
+</script>
+{% endblock %}
