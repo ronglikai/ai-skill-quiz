@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}学习记录 - AI Skill 知识测试系统{% endblock %}
+
+{% block nav_links %}
+{% if current_user_id %}
+<a href="/dashboard?user_id={{ current_user_id }}" class="text-gray-600 hover:text-primary transition">返回仪表盘</a>
+<span class="text-gray-400">|</span>
+<a href="/test?user_id={{ current_user_id }}" class="text-primary hover:text-primary-dark font-medium transition">开始测试</a>
+{% else %}
+<a href="/" class="text-gray-600 hover:text-primary transition">返回登录</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+    <h1 class="text-2xl font-bold text-gray-800 mb-6">团队学习记录</h1>
+
+    <!-- 全员概况 -->
+    <div class="bg-white rounded-2xl shadow-sm p-6 border border-gray-100 mb-6">
+        <h2 class="text-lg font-bold text-gray-800 mb-4">全员概况</h2>
+        {% if all_records %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-100">
+                        <th class="text-left py-3 px-4 text-gray-500 font-medium">姓名</th>
+                        <th class="text-center py-3 px-4 text-gray-500 font-medium">测试次数</th>
+                        <th class="text-center py-3 px-4 text-gray-500 font-medium">累计正确</th>
+                        <th class="text-center py-3 px-4 text-gray-500 font-medium">累计题数</th>
+                        <th class="text-center py-3 px-4 text-gray-500 font-medium">正确率</th>
+                        <th class="text-center py-3 px-4 text-gray-500 font-medium">最近测试</th>
+                        <th class="text-right py-3 px-4 text-gray-500 font-medium">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in all_records %}
+                    <tr class="border-b border-gray-50 hover:bg-gray-50 transition">
+                        <td class="py-3 px-4 font-medium text-gray-800">{{ r.name }}</td>
+                        <td class="py-3 px-4 text-center text-gray-600">{{ r.total_sessions }}</td>
+                        <td class="py-3 px-4 text-center text-green-600 font-medium">{{ r.total_correct }}</td>
+                        <td class="py-3 px-4 text-center text-gray-600">{{ r.total_questions }}</td>
+                        <td class="py-3 px-4 text-center">
+                            {% if r.total_questions > 0 %}
+                            <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium
+                                {% if r.total_correct / r.total_questions >= 0.8 %}bg-green-100 text-green-700
+                                {% elif r.total_correct / r.total_questions >= 0.5 %}bg-yellow-100 text-yellow-700
+                                {% else %}bg-red-100 text-red-700{% endif %}">
+                                {{ ((r.total_correct / r.total_questions) * 100) | round(0) | int }}%
+                            </span>
+                            {% else %}
+                            <span class="text-gray-400">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3 px-4 text-center text-gray-500 text-xs">{{ r.last_test_at or '-' }}</td>
+                        <td class="py-3 px-4 text-right">
+                            <a href="/records?user_id={{ r.user_id }}" class="text-primary hover:text-primary-dark text-xs font-medium">详情</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-12 text-gray-400">
+            <svg class="w-16 h-16 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            </svg>
+            <p>暂无测试记录</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 个人详情 -->
+    {% if user_detail and user_detail.user %}
+    <div class="bg-white rounded-2xl shadow-sm p-6 border border-gray-100 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-bold text-gray-800">{{ user_detail.user.name }} 的学习详情</h2>
+            <a href="/test?user_id={{ user_detail.user.id }}" class="text-sm bg-primary hover:bg-primary-dark text-white font-medium py-2 px-5 rounded-xl transition">
+                继续学习
+            </a>
+        </div>
+
+        <!-- 每题掌握情况 -->
+        {% if user_detail.question_stats %}
+        <h3 class="text-sm font-bold text-gray-600 mb-3">各题目掌握情况</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 mb-6">
+            {% for qs in user_detail.question_stats %}
+            <div class="rounded-xl p-3 text-center border
+                {% if qs.ever_correct %}bg-green-50 border-green-200{% else %}bg-red-50 border-red-200{% endif %}">
+                <div class="text-2xl font-bold {% if qs.ever_correct %}text-green-600{% else %}text-red-500{% endif %}">
+                    #{{ qs.question_id }}
+                </div>
+                <div class="text-xs text-gray-500 mt-1">
+                    最高 {{ qs.best_score }}分 | {{ qs.total_attempts }}次
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- 测试记录列表 -->
+        <h3 class="text-sm font-bold text-gray-600 mb-3">测试记录</h3>
+        {% if user_detail.sessions %}
+        <div class="space-y-3">
+            {% for s in user_detail.sessions %}
+            <a href="/session/{{ s.id }}/detail?user_id={{ current_user_id }}" class="flex items-center justify-between p-4 rounded-xl bg-gray-50 hover:bg-primary-50 transition group">
+                <div>
+                    <div class="text-sm font-medium text-gray-800">{{ s.started_at }}</div>
+                    <div class="text-xs text-gray-400 mt-1">
+                        {% if s.completed_at %}已完成{% else %}进行中{% endif %}
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right">
+                        <span class="text-sm font-bold {% if s.unique_correct >= s.total_questions * 0.8 %}text-green-600{% elif s.unique_correct >= s.total_questions * 0.5 %}text-yellow-600{% else %}text-red-500{% endif %}">
+                            {{ s.correct_count }}/{{ s.total_questions }}
+                        </span>
+                    </div>
+                    <svg class="w-5 h-5 text-gray-300 group-hover:text-primary transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-gray-400 text-sm">暂无测试记录</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

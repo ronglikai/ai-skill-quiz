@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}仪表盘 - AI Skill 知识测试系统{% endblock %}
+
+{% block nav_links %}
+<a href="/records?user_id={{ user.id }}" class="text-gray-600 hover:text-primary transition">查看记录</a>
+<span class="text-gray-400">|</span>
+<span class="text-gray-600">{{ user.name }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <!-- 欢迎区 -->
+    <div class="bg-white rounded-2xl shadow-sm p-8 mb-6 border border-gray-100">
+        <h1 class="text-2xl font-bold text-gray-800 mb-2">欢迎，{{ user.name }}！</h1>
+        <p class="text-gray-500">通过测试和学习，快速掌握AI Skill搭建的核心知识</p>
+    </div>
+
+    <!-- 操作卡片 -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <!-- 开始测试 -->
+        <a href="/test?user_id={{ user.id }}" class="block bg-white rounded-2xl shadow-sm p-6 border border-gray-100 hover:shadow-md hover:border-primary transition group">
+            <div class="w-14 h-14 bg-primary-50 rounded-xl flex items-center justify-center mb-4 group-hover:bg-primary transition">
+                <svg class="w-7 h-7 text-primary group-hover:text-white transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                </svg>
+            </div>
+            <h2 class="text-lg font-bold text-gray-800 mb-1">开始新测试</h2>
+            <p class="text-gray-500 text-sm">共 {{ total_questions }} 道题目，覆盖AI Skill全部核心知识点</p>
+        </a>
+
+        <!-- 查看记录 -->
+        <a href="/records?user_id={{ user.id }}" class="block bg-white rounded-2xl shadow-sm p-6 border border-gray-100 hover:shadow-md hover:border-primary transition group">
+            <div class="w-14 h-14 bg-primary-50 rounded-xl flex items-center justify-center mb-4 group-hover:bg-primary transition">
+                <svg class="w-7 h-7 text-primary group-hover:text-white transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+            </div>
+            <h2 class="text-lg font-bold text-gray-800 mb-1">学习记录</h2>
+            <p class="text-gray-500 text-sm">查看所有成员的测试表现和学习进度</p>
+        </a>
+    </div>
+
+    <!-- 历史测试记录 -->
+    {% if sessions %}
+    <div class="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
+        <h2 class="text-lg font-bold text-gray-800 mb-4">我的测试历史</h2>
+        <div class="space-y-3">
+            {% for s in sessions %}
+            <a href="/session/{{ s.id }}/detail?user_id={{ user.id }}" class="flex items-center justify-between p-4 rounded-xl bg-gray-50 hover:bg-primary-50 transition group">
+                <div>
+                    <div class="text-sm font-medium text-gray-800">
+                        第 {{ loop.revindex }} 次测试
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1">{{ s.started_at }}</div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right">
+                        <div class="text-sm font-bold {% if s.correct_count >= s.total_questions * 0.8 %}text-green-600{% elif s.correct_count >= s.total_questions * 0.5 %}text-yellow-600{% else %}text-red-500{% endif %}">
+                            {{ s.correct_count }}/{{ s.total_questions }}
+                        </div>
+                        <div class="text-xs text-gray-400">
+                            {% if s.completed_at %}已完成{% else %}进行中{% endif %}
+                        </div>
+                    </div>
+                    <svg class="w-5 h-5 text-gray-300 group-hover:text-primary transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

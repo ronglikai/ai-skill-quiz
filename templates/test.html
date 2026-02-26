@@ -1,0 +1,461 @@
+{% extends "base.html" %}
+{% block title %}测试 - AI Skill 知识测试系统{% endblock %}
+
+{% block nav_links %}
+<a href="/dashboard?user_id={{ user.id }}" class="text-gray-600 hover:text-primary transition">返回仪表盘</a>
+<span class="text-gray-400">|</span>
+<a href="/records?user_id={{ user.id }}" class="text-gray-600 hover:text-primary transition">查看记录</a>
+<span class="text-gray-400">|</span>
+<span class="text-gray-600">{{ user.name }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto" id="testApp">
+    <!-- 进度条 -->
+    <div class="bg-white rounded-2xl shadow-sm p-4 mb-6 border border-gray-100">
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-medium text-gray-600">答题进度</span>
+            <span class="text-sm font-bold text-primary" id="progressText">0/{{ total_questions }}</span>
+        </div>
+        <div class="w-full bg-gray-100 rounded-full h-2.5">
+            <div class="bg-primary rounded-full h-2.5 transition-all duration-500" id="progressBar" style="width: 0%"></div>
+        </div>
+    </div>
+
+    <!-- 题目区域 -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+        <!-- 题目头部 -->
+        <div class="px-6 py-4 bg-primary-50 border-b border-primary-100">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <span class="bg-primary text-white text-xs font-bold px-3 py-1 rounded-full" id="questionCategory">核心概念</span>
+                    <span class="text-xs text-gray-500" id="questionDifficulty">基础</span>
+                </div>
+                <span class="text-sm font-medium text-gray-600">第 <span id="questionNum">1</span>/{{ total_questions }} 题</span>
+            </div>
+        </div>
+
+        <!-- 题目内容 -->
+        <div class="p-6">
+            <h2 class="text-lg font-bold text-gray-800 mb-6 leading-relaxed" id="questionText">加载中...</h2>
+
+            <!-- 答题区 -->
+            <div id="answerSection">
+                <textarea
+                    id="answerInput"
+                    rows="5"
+                    placeholder="请在此输入你的回答...&#10;&#10;提示：尽量用自己的话描述理解，不需要完全一字不差"
+                    class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition resize-none text-base"
+                ></textarea>
+                <div class="flex items-center justify-between mt-4">
+                    <span class="text-xs text-gray-400" id="attemptInfo"></span>
+                    <button
+                        onclick="submitAnswer()"
+                        id="submitBtn"
+                        class="bg-primary hover:bg-primary-dark text-white font-medium py-2.5 px-8 rounded-xl transition duration-200 flex items-center gap-2"
+                    >
+                        <span>提交回答</span>
+                        <svg class="w-4 h-4 hidden" id="submitSpinner" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- AI反馈区（默认隐藏） -->
+            <div id="feedbackSection" class="hidden mt-6">
+                <!-- 评分 -->
+                <div id="scoreCard" class="rounded-xl p-5 mb-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-3">
+                            <span id="scoreIcon" class="text-3xl"></span>
+                            <div>
+                                <div class="text-lg font-bold" id="scoreLabel">评估中...</div>
+                                <div class="text-sm opacity-80" id="scoreValue"></div>
+                            </div>
+                        </div>
+                        <div class="text-4xl font-bold" id="scoreNumber">--</div>
+                    </div>
+                </div>
+
+                <!-- 详细反馈 -->
+                <div class="space-y-4">
+                    <!-- 评价 -->
+                    <div class="bg-gray-50 rounded-xl p-5">
+                        <h3 class="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                            <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+                            </svg>
+                            评价
+                        </h3>
+                        <p class="text-gray-600 text-sm leading-relaxed" id="feedbackText"></p>
+                    </div>
+
+                    <!-- 知识盲点（仅答错时显示） -->
+                    <div id="gapsSection" class="bg-red-50 rounded-xl p-5 hidden">
+                        <h3 class="text-sm font-bold text-red-700 mb-2 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                            </svg>
+                            知识盲点
+                        </h3>
+                        <ul class="text-sm text-red-600 space-y-1" id="gapsList"></ul>
+                    </div>
+
+                    <!-- 学习引导 -->
+                    <div id="guidanceSection" class="bg-blue-50 rounded-xl p-5">
+                        <h3 class="text-sm font-bold text-blue-700 mb-2 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            学习引导
+                        </h3>
+                        <p class="text-sm text-blue-600 leading-relaxed" id="guidanceText"></p>
+                    </div>
+                </div>
+
+                <!-- 操作按钮 -->
+                <div class="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
+                    <button
+                        onclick="retryQuestion()"
+                        id="retryBtn"
+                        class="text-primary hover:text-primary-dark font-medium py-2 px-6 rounded-xl border border-primary hover:bg-primary-50 transition duration-200 hidden"
+                    >
+                        重新回答
+                    </button>
+                    <button
+                        onclick="nextQuestion()"
+                        id="nextBtn"
+                        class="bg-primary hover:bg-primary-dark text-white font-medium py-2.5 px-8 rounded-xl transition duration-200 ml-auto"
+                    >
+                        下一题
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 题目导航 -->
+    <div class="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
+        <h3 class="text-sm font-bold text-gray-700 mb-3">题目导航</h3>
+        <div class="flex flex-wrap gap-2" id="questionNav">
+            {% for q in questions %}
+            <button
+                onclick="goToQuestion({{ q.id }})"
+                class="w-9 h-9 rounded-lg border text-sm font-medium transition question-nav-btn"
+                data-qid="{{ q.id }}"
+                title="{{ q.category }} - {{ q.question[:30] }}..."
+            >
+                {{ q.id }}
+            </button>
+            {% endfor %}
+        </div>
+        <div class="mt-3 flex items-center gap-4 text-xs text-gray-400">
+            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-gray-100 border border-gray-200 inline-block"></span> 未作答</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-green-100 border border-green-300 inline-block"></span> 已答对</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-100 border border-red-300 inline-block"></span> 未答对</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-primary border border-primary inline-block"></span> 当前题</span>
+        </div>
+    </div>
+
+    <!-- 完成测试弹窗 -->
+    <div id="completionModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4">
+            <div class="text-center">
+                <div class="w-20 h-20 bg-primary-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-10 h-10 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">测试完成！</h2>
+                <p class="text-gray-500 mb-6" id="completionStats">你已完成所有题目</p>
+                <div class="flex gap-3">
+                    <a href="/records?user_id={{ user.id }}" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-4 rounded-xl transition">
+                        查看记录
+                    </a>
+                    <a href="/dashboard?user_id={{ user.id }}" class="flex-1 bg-primary hover:bg-primary-dark text-white font-medium py-3 px-4 rounded-xl transition">
+                        返回首页
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 测试数据
+    const SESSION_ID = {{ session_id }};
+    const USER_ID = {{ user.id }};
+    const QUESTIONS = {{ questions | tojson }};
+    const TOTAL = QUESTIONS.length;
+
+    let currentIndex = 0;
+    let answeredQuestions = {}; // {qid: {is_correct, score, attempts}}
+    let isSubmitting = false;
+
+    // 初始化
+    document.addEventListener('DOMContentLoaded', () => {
+        loadProgress();
+        showQuestion(0);
+    });
+
+    async function loadProgress() {
+        try {
+            const resp = await fetch(`/api/session/${SESSION_ID}/progress`);
+            const data = await resp.json();
+            for (const p of data.progress) {
+                answeredQuestions[p.question_id] = {
+                    is_correct: p.is_correct,
+                    score: p.score,
+                    attempts: p.attempts,
+                };
+            }
+            updateNav();
+            updateProgress();
+        } catch (e) {
+            console.error('加载进度失败', e);
+        }
+    }
+
+    function showQuestion(index) {
+        if (index < 0 || index >= TOTAL) return;
+        currentIndex = index;
+        const q = QUESTIONS[index];
+
+        document.getElementById('questionCategory').textContent = q.category;
+        document.getElementById('questionDifficulty').textContent = q.difficulty;
+        document.getElementById('questionNum').textContent = q.id;
+        document.getElementById('questionText').textContent = q.question;
+
+        // 重置UI
+        document.getElementById('answerSection').classList.remove('hidden');
+        document.getElementById('feedbackSection').classList.add('hidden');
+        document.getElementById('answerInput').value = '';
+
+        // 显示尝试次数
+        const info = answeredQuestions[q.id];
+        if (info) {
+            if (info.is_correct) {
+                document.getElementById('attemptInfo').textContent = `已答对 (${info.attempts}次尝试)`;
+            } else {
+                document.getElementById('attemptInfo').textContent = `已尝试 ${info.attempts} 次`;
+            }
+        } else {
+            document.getElementById('attemptInfo').textContent = '';
+        }
+
+        updateNav();
+
+        // 自动聚焦输入框
+        setTimeout(() => document.getElementById('answerInput').focus(), 100);
+    }
+
+    function goToQuestion(qid) {
+        const idx = QUESTIONS.findIndex(q => q.id === qid);
+        if (idx >= 0) showQuestion(idx);
+    }
+
+    async function submitAnswer() {
+        if (isSubmitting) return;
+
+        const answer = document.getElementById('answerInput').value.trim();
+        if (!answer) {
+            shakeElement(document.getElementById('answerInput'));
+            return;
+        }
+
+        const q = QUESTIONS[currentIndex];
+        isSubmitting = true;
+
+        // UI状态：加载中
+        const btn = document.getElementById('submitBtn');
+        const spinner = document.getElementById('submitSpinner');
+        btn.disabled = true;
+        btn.querySelector('span').textContent = 'AI评估中...';
+        spinner.classList.remove('hidden');
+
+        try {
+            const resp = await fetch('/api/submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: SESSION_ID,
+                    question_id: q.id,
+                    answer: answer,
+                }),
+            });
+            const data = await resp.json();
+
+            if (data.status === 'already_correct') {
+                showNotification('你已经答对了这道题！', 'success');
+                return;
+            }
+
+            if (data.status === 'ok') {
+                const result = data.result;
+
+                // 更新记录
+                answeredQuestions[q.id] = {
+                    is_correct: result.is_correct,
+                    score: result.score,
+                    attempts: data.attempt,
+                };
+
+                // 显示反馈
+                showFeedback(result);
+                updateProgress();
+                updateNav();
+            }
+        } catch (e) {
+            showNotification('提交失败，请重试', 'error');
+        } finally {
+            isSubmitting = false;
+            btn.disabled = false;
+            btn.querySelector('span').textContent = '提交回答';
+            spinner.classList.add('hidden');
+        }
+    }
+
+    function showFeedback(result) {
+        document.getElementById('answerSection').classList.add('hidden');
+        document.getElementById('feedbackSection').classList.remove('hidden');
+
+        // 分数卡
+        const scoreCard = document.getElementById('scoreCard');
+        const scoreNumber = document.getElementById('scoreNumber');
+        const scoreLabel = document.getElementById('scoreLabel');
+        const scoreValue = document.getElementById('scoreValue');
+        const scoreIcon = document.getElementById('scoreIcon');
+
+        scoreNumber.textContent = result.score >= 0 ? result.score : '--';
+
+        if (result.is_correct) {
+            scoreCard.className = 'rounded-xl p-5 mb-4 bg-green-50 text-green-800';
+            scoreIcon.textContent = '\u2705';
+            scoreLabel.textContent = '回答正确！';
+            scoreValue.textContent = '掌握良好';
+        } else if (result.score >= 40) {
+            scoreCard.className = 'rounded-xl p-5 mb-4 bg-yellow-50 text-yellow-800';
+            scoreIcon.textContent = '\u{1F4A1}';
+            scoreLabel.textContent = '部分正确';
+            scoreValue.textContent = '还需要补充一些知识点';
+        } else {
+            scoreCard.className = 'rounded-xl p-5 mb-4 bg-red-50 text-red-800';
+            scoreIcon.textContent = '\u{1F4DA}';
+            scoreLabel.textContent = '需要加强';
+            scoreValue.textContent = '建议重新学习相关内容';
+        }
+
+        // 反馈文本
+        document.getElementById('feedbackText').textContent = result.feedback;
+
+        // 知识盲点
+        const gapsSection = document.getElementById('gapsSection');
+        const gapsList = document.getElementById('gapsList');
+        if (result.knowledge_gaps && result.knowledge_gaps.length > 0) {
+            gapsSection.classList.remove('hidden');
+            gapsList.innerHTML = result.knowledge_gaps.map(g => `<li>\u2022 ${g}</li>`).join('');
+        } else {
+            gapsSection.classList.add('hidden');
+        }
+
+        // 引导
+        document.getElementById('guidanceText').textContent = result.guidance;
+
+        // 按钮
+        const retryBtn = document.getElementById('retryBtn');
+        if (!result.is_correct) {
+            retryBtn.classList.remove('hidden');
+        } else {
+            retryBtn.classList.add('hidden');
+        }
+
+        // 最后一题时更改按钮文案
+        const nextBtn = document.getElementById('nextBtn');
+        if (currentIndex >= TOTAL - 1) {
+            nextBtn.textContent = '完成测试';
+        } else {
+            nextBtn.textContent = '下一题';
+        }
+    }
+
+    function retryQuestion() {
+        document.getElementById('answerSection').classList.remove('hidden');
+        document.getElementById('feedbackSection').classList.add('hidden');
+        document.getElementById('answerInput').value = '';
+        document.getElementById('answerInput').focus();
+    }
+
+    async function nextQuestion() {
+        if (currentIndex >= TOTAL - 1) {
+            // 完成测试
+            await fetch('/api/complete-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: SESSION_ID }),
+            });
+
+            const correctCount = Object.values(answeredQuestions).filter(a => a.is_correct).length;
+            document.getElementById('completionStats').textContent =
+                `共 ${TOTAL} 题，答对 ${correctCount} 题，正确率 ${Math.round(correctCount/TOTAL*100)}%`;
+            document.getElementById('completionModal').classList.remove('hidden');
+        } else {
+            showQuestion(currentIndex + 1);
+        }
+    }
+
+    function updateProgress() {
+        const correctCount = Object.values(answeredQuestions).filter(a => a.is_correct).length;
+        const answeredCount = Object.keys(answeredQuestions).length;
+        document.getElementById('progressText').textContent = `${correctCount}/${TOTAL} 已掌握`;
+        document.getElementById('progressBar').style.width = `${(correctCount / TOTAL) * 100}%`;
+    }
+
+    function updateNav() {
+        const buttons = document.querySelectorAll('.question-nav-btn');
+        buttons.forEach(btn => {
+            const qid = parseInt(btn.dataset.qid);
+            const info = answeredQuestions[qid];
+            const isCurrent = QUESTIONS[currentIndex]?.id === qid;
+
+            // 重置样式
+            btn.className = 'w-9 h-9 rounded-lg border text-sm font-medium transition question-nav-btn';
+
+            if (isCurrent) {
+                btn.classList.add('bg-primary', 'border-primary', 'text-white');
+            } else if (info?.is_correct) {
+                btn.classList.add('bg-green-100', 'border-green-300', 'text-green-700');
+            } else if (info) {
+                btn.classList.add('bg-red-100', 'border-red-300', 'text-red-600');
+            } else {
+                btn.classList.add('bg-gray-50', 'border-gray-200', 'text-gray-500', 'hover:border-primary', 'hover:text-primary');
+            }
+        });
+    }
+
+    function shakeElement(el) {
+        el.classList.add('shake');
+        setTimeout(() => el.classList.remove('shake'), 500);
+    }
+
+    function showNotification(msg, type) {
+        const div = document.createElement('div');
+        div.className = `fixed top-20 right-4 px-6 py-3 rounded-xl shadow-lg text-white text-sm font-medium z-50 transition-all transform translate-x-0 ${
+            type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-primary'
+        }`;
+        div.textContent = msg;
+        document.body.appendChild(div);
+        setTimeout(() => { div.style.opacity = '0'; setTimeout(() => div.remove(), 300); }, 3000);
+    }
+
+    // 快捷键：Ctrl+Enter 提交
+    document.getElementById('answerInput').addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            submitAnswer();
+        }
+    });
+</script>
+{% endblock %}

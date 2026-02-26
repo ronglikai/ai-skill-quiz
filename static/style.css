@@ -1,0 +1,89 @@
+/* AI Skill 知识测试系统 - 自定义样式 */
+
+/* 平滑滚动 */
+html {
+    scroll-behavior: smooth;
+}
+
+/* 输入框聚焦动画 */
+textarea:focus, input:focus {
+    box-shadow: 0 0 0 3px rgba(0, 194, 177, 0.15);
+}
+
+/* 抖动动画 */
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+    20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+
+.shake {
+    animation: shake 0.5s ease-in-out;
+}
+
+/* 加载旋转 */
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+#submitSpinner {
+    animation: spin 1s linear infinite;
+}
+
+/* 淡入动画 */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+#feedbackSection:not(.hidden) {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* 进度条动画 */
+#progressBar {
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 题目导航按钮悬停效果 */
+.question-nav-btn:hover {
+    transform: scale(1.1);
+}
+
+.question-nav-btn {
+    transition: all 0.15s ease;
+}
+
+/* 通知条消失动画 */
+.fixed[style*="opacity: 0"] {
+    transition: opacity 0.3s ease;
+}
+
+/* 移动端优化 */
+@media (max-width: 640px) {
+    .question-nav-btn {
+        width: 2rem;
+        height: 2rem;
+        font-size: 0.7rem;
+    }
+}
+
+/* 选择滚动条样式 */
+textarea::-webkit-scrollbar {
+    width: 6px;
+}
+
+textarea::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+textarea::-webkit-scrollbar-thumb {
+    background: #00C2B1;
+    border-radius: 3px;
+}
+
+textarea::-webkit-scrollbar-thumb:hover {
+    background: #00A89A;
+}

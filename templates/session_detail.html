@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}测试详情 - AI Skill 知识测试系统{% endblock %}
+
+{% block nav_links %}
+{% if current_user_id %}
+<a href="/dashboard?user_id={{ current_user_id }}" class="text-gray-600 hover:text-primary transition">仪表盘</a>
+<span class="text-gray-400">|</span>
+<a href="/records?user_id={{ current_user_id }}" class="text-gray-600 hover:text-primary transition">返回记录</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- 测试概况 -->
+    <div class="bg-white rounded-2xl shadow-sm p-6 border border-gray-100 mb-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-xl font-bold text-gray-800">{{ session.user_name }} 的测试详情</h1>
+                <p class="text-gray-500 text-sm mt-1">{{ session.started_at }}</p>
+            </div>
+            <div class="text-right">
+                <div class="text-3xl font-bold text-primary">{{ session.correct_count }}/{{ session.total_questions }}</div>
+                <div class="text-xs text-gray-400 mt-1">{% if session.completed_at %}已完成{% else %}进行中{% endif %}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 答题详情 -->
+    <div class="space-y-4">
+        {% set ns = namespace(current_qid=0) %}
+        {% for ans in answers %}
+        {% if ans.question_id != ns.current_qid %}
+        {% set ns.current_qid = ans.question_id %}
+        <!-- 题目卡片 -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="px-6 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <span class="text-sm font-bold text-gray-600">#{{ ans.question_id }}</span>
+                    <span class="text-xs bg-primary-50 text-primary px-2 py-0.5 rounded-full">{{ ans.category }}</span>
+                </div>
+                {% if ans.is_correct %}
+                <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">已掌握</span>
+                {% else %}
+                <span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">需加强</span>
+                {% endif %}
+            </div>
+            <div class="p-6">
+                <h3 class="text-base font-bold text-gray-800 mb-4">{{ ans.question_text }}</h3>
+        {% endif %}
+
+                <!-- 单次回答 -->
+                <div class="mb-4 last:mb-0 pl-4 border-l-2 {% if ans.is_correct %}border-green-300{% else %}border-gray-200{% endif %}">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-xs text-gray-400">第{{ ans.attempt_number }}次回答</span>
+                        <span class="text-xs font-medium {% if ans.score >= 60 %}text-green-600{% elif ans.score >= 40 %}text-yellow-600{% else %}text-red-500{% endif %}">
+                            {{ ans.score }}分
+                        </span>
+                        <span class="text-xs text-gray-400">{{ ans.created_at }}</span>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-3 mb-2">
+                        <p class="text-sm text-gray-700">{{ ans.user_answer }}</p>
+                    </div>
+                    {% if ans.ai_feedback %}
+                    <div class="text-sm text-gray-500 mb-1">
+                        <span class="font-medium text-gray-600">AI评价：</span>{{ ans.ai_feedback }}
+                    </div>
+                    {% endif %}
+                    {% if ans.guidance %}
+                    <div class="text-sm text-blue-600 bg-blue-50 rounded-lg p-2 mt-2">
+                        <span class="font-medium">引导：</span>{{ ans.guidance }}
+                    </div>
+                    {% endif %}
+                </div>
+
+        {% if loop.last or answers[loop.index0 + 1].question_id != ans.question_id %}
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    {% if not answers %}
+    <div class="bg-white rounded-2xl shadow-sm p-12 border border-gray-100 text-center">
+        <p class="text-gray-400">本次测试暂无答题记录</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
